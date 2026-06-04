@@ -1,0 +1,12 @@
+# Core dependencies
+fastmcp>=0.1.0
+pydantic>=2.0,<3.0
+httpx>=0.27.0
+groq>=1.0.0
+rich>=13.0.0
+
+# Optional: volatility3, regipy
+# pip install findevil-agent[full]
+
+# Dev dependencies
+# pip install findevil-agent[dev]
