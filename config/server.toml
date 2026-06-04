@@ -1,0 +1,30 @@
+# Find Evil! Agent — Server Configuration
+[server]
+name = "findevil-agent"
+version = "1.0.0"
+transport = "stdio"  # stdio or sse
+host = "0.0.0.0"
+port = 8080
+
+[evidence]
+root = "/evidence"
+allowed_paths = ["/evidence/disk", "/evidence/memory", "/evidence/network", "/evidence/cases"]
+read_only = true
+
+[results]
+root = "/results"
+subdirs = ["audit", "carved", "timelines", "reports"]
+
+[security]
+max_timeout_seconds = 600
+max_output_chars = 100000
+forbidden_commands = ["dd", "mkfs", "fdisk", "rm", "shutdown"]
+forbidden_args = ["--output", "-w", "--write"]
+
+[tools]
+search_paths = [
+    "/usr/bin",
+    "/usr/local/bin",
+    "/usr/sbin",
+    "/usr/share",
+]

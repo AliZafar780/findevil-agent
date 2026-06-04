@@ -1,0 +1,64 @@
+# Tool definitions for SIFT Workstation
+# Maps tool names to their CLI commands and parameter schemas
+
+[tools.fls]
+command = "/usr/bin/fls"
+description = "List files and directories in a forensic image"
+args = [
+    {name = "image", type = "string", required = true, position = 0},
+    {name = "offset", type = "int", required = false, flag = "-o"},
+    {name = "inode", type = "int", required = false, position = 1},
+    {name = "recursive", type = "bool", required = false, flag = "-r"},
+    {name = "timezone", type = "string", required = false, flag = "-z"},
+]
+
+[tools.icat]
+command = "/usr/bin/icat"
+description = "Extract file content by inode"
+args = [
+    {name = "image", type = "string", required = true, position = 0},
+    {name = "inode", type = "int", required = true, position = 1},
+]
+
+[tools.mmls]
+command = "/usr/bin/mmls"
+description = "Display partition table"
+args = [
+    {name = "image", type = "string", required = true, position = 0},
+    {name = "offset", type = "int", required = false, flag = "-o"},
+]
+
+[tools.fsstat]
+command = "/usr/bin/fsstat"
+description = "Display file system statistics"
+args = [
+    {name = "image", type = "string", required = true, position = 0},
+    {name = "offset", type = "int", required = false, flag = "-o"},
+]
+
+[tools.foremost]
+command = "/usr/bin/foremost"
+description = "Carve files by headers"
+args = [
+    {name = "image", type = "string", required = true, position = -1},
+    {name = "output", type = "string", required = true, flag = "-o"},
+    {name = "types", type = "string", required = false, flag = "-t"},
+    {name = "verbose", type = "bool", required = false, flag = "-v"},
+]
+
+[tools.bulk_extractor]
+command = "/usr/bin/bulk_extractor"
+description = "Extract features from forensic image"
+args = [
+    {name = "image", type = "string", required = true, position = -1},
+    {name = "output", type = "string", required = true, flag = "-o"},
+    {name = "scanners", type = "string", required = false, flag = "-S"},
+]
+
+[tools.hashdeep]
+command = "/usr/bin/hashdeep"
+description = "Compute recursive file hashes"
+args = [
+    {name = "algorithm", type = "string", required = false, flag = "-a"},
+    {name = "paths", type = "list", required = true, position = 0},
+]
