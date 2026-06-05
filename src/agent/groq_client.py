@@ -12,6 +12,8 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
+from src.agent.output_parser import extract_json_from_text
+
 logger = logging.getLogger("findevil-groq")
 
 # Default Groq model (fast + capable)
@@ -248,6 +250,7 @@ class GroqDFIRClient:
                     f"Errors encountered: {errors_summary}\n\n"
                     f"Based on these results, which tools should I run next? \n"
                     f"Return a JSON list of tool names with brief reasoning for each.\n"
+                    f"Output ONLY valid JSON with NO markdown formatting, NO code blocks.\n"
                     f"Available tools: fs_partition_scan, fs_list_files, fs_extract_file, "
                     f"fs_file_metadata, fs_filesystem_info, carve_files, scan_yara, "
                     f"verify_hash, list_evidence, mem_analyze, mem_list_processes, "
@@ -261,9 +264,15 @@ class GroqDFIRClient:
         if not result:
             return []
         try:
+            parsed = extract_json_from_text(result)
+            if parsed and isinstance(parsed, dict):
+                tools = parsed.get("tools", parsed.get("next_tools", []))
+                if isinstance(tools, list):
+                    return [t.get("name", t) if isinstance(t, dict) else t for t in tools]
+            # Also try direct parse as fallback
             parsed = json.loads(result)
             return parsed.get("tools", [])
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError, AttributeError):
             logger.warning("Failed to parse LLM tool decision: %s", result[:200])
             return []
 
