@@ -397,6 +397,7 @@ class TestOutputDirSecurity:
         assert not r.get("success"), "Output outside /results should be blocked"
 
 
+@pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
 class TestConcurrentAccess:
     """Rapid sequential calls must all succeed."""
 
