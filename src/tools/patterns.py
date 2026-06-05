@@ -53,12 +53,15 @@ rule KnownMaliciousHashes {
 rule NetworkIndicators {
     meta:
         description = "Detects network indicators of compromise"
+        severity = "high"
+        author = "FindEvil Agent"
     strings:
-        $ip1 = "192.168.1.100:4444" nocase
-        $ip2 = "10.10.10.10:1337" nocase
-        $domain1 = "malware.evil.com" nocase
-        $domain2 = "c2server.bad" nocase
-        $url1 = "http://evil.com/payload" nocase
+        $ip1 = "185.130.5.183" nocase
+        $ip2 = "45.155.205.233" nocase
+        $domain1 = ".tor2web." nocase
+        $domain2 = ".onion" nocase
+        $url1 = "pastebin.com" nocase
+        $url2 = "raw.githubusercontent.com" nocase
     condition:
         any of them
 }
@@ -79,17 +82,19 @@ rule RegistryPersistence {
 
 rule SuspiciousFileExtensions {
     meta:
-        description = "Detects suspicious file extensions"
+        description = "Detects suspicious file extensions often used in malware delivery"
+        severity = "medium"
+        author = "FindEvil Agent"
     strings:
-        $e1 = ".ps1" nocase
-        $e2 = ".vbs" nocase
-        $e3 = ".js" nocase
-        $e4 = ".vba" nocase
-        $e5 = ".hta" nocase
-        $e6 = ".scr" nocase
-        $e7 = ".bat" nocase
-        $e8 = ".cmd" nocase
-        $e9 = ".jar" nocase
+        $e1 = ".hta" nocase
+        $e2 = ".scr" nocase
+        $e3 = ".vbe" nocase
+        $e4 = ".jse" nocase
+        $e5 = ".wsf" nocase
+        $e6 = ".docm" nocase
+        $e7 = ".pptm" nocase
+        $e8 = ".xlsm" nocase
+        $e9 = ".cpl" nocase
     condition:
         any of them
 }

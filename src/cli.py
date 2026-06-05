@@ -52,13 +52,11 @@ logger = logging.getLogger("findevil-cli")
 # ── ASCII Art Engine ──────────────────────────────────────────────
 
 def _generate_logo() -> str:
-    """Generate the FindEvil ASCII logo using pyfiglet or fallback."""
+    """Generate the FindEvil ASCII logo using pyfiglet or built-in art."""
     if PYFIGLET_AVAILABLE:
         try:
-            # Try a variety of cool fonts
             fonts = ["big", "block", "banner3", "ansi_shadow", "cyberlarge", "small"]
             fig = pyfiglet.Figlet(font="big")
-            # Check if font works, fallback
             result = fig.renderText("FindEvil")
             if not result.strip():
                 fig = pyfiglet.Figlet(font="small")
@@ -67,21 +65,44 @@ def _generate_logo() -> str:
             result = None
         if result and result.strip():
             return result.rstrip("\n")
-    # Hand-crafted fallback ASCII art with ANSI shadow effect
-    return r"""  ███████╗██╗███╗   ██╗██████╗ ███████╗██╗   ██╗██╗██╗
-  ██╔════╝██║████╗  ██║██╔══██╗██╔════╝██║   ██║██║██║
-  █████╗  ██║██╔██╗ ██║██║  ██║█████╗  ██║   ██║██║██║
-  ██╔══╝  ██║██║╚██╗██║██║  ██║██╔══╝  ╚██╗ ██╔╝██║██║
-  ██║     ██║██║ ╚████║██████╔╝███████╗ ╚████╔╝ ██║██║
-  ╚═╝     ╚═╝╚═╝  ╚═══╝╚═════╝ ╚══════╝  ╚═══╝  ╚═╝╚═╝"""
+    # Professional built-in ASCII art — DFIR-themed
+    return r"""                           ;                                                          
+     Et                          ED.                                                        
+     E#t          L.             E#Wi                       ,;                              
+     E##t     t   EW:        ,ft E###G.                   f#i            t              i   
+     E#W#t    Ej  E##;       t#E E#fD#W;                .E#t             Ej            LE   
+     E#tfL.   E#, E###t      t#E E#t t##L              i#W,   t      .DD.E#,          L#E   
+     E#t      E#t E#fE#f     t#E E#t  .E#K,           L#D.    EK:   ,WK. E#t         G#W.   
+  ,ffW#Dffj.  E#t E#t D#G    t#E E#t    j##f        :K#Wfff;  E#t  i#D   E#t        D#K.    
+   ;LW#ELLLf. E#t E#t  f#E.  t#E E#t    :E#K:       i##WLLLLt E#t j#f    E#t       E#K.     
+     E#t      E#t E#t   t#K: t#E E#t   t##L          .E#L     E#tL#i     E#t     .E#E.      
+     E#t      E#t E#t    ;#W,t#E E#t .D#W;             f#E:   E#WW,      E#t    .K#E        
+     E#t      E#t E#t     :K#D#E E#tiW#G.               ,WW;  E#K:       E#t   .K#D         
+     E#t      E#t E#t      .E##E E#K##i                  .D#; ED.        E#t  .W#G          
+     E#t      E#t ..         G#E E##D.                     tt t          E#t :W##########Wt 
+     ;#t      ,;.             fE E#t                                     ,;. :,,,,,,,,,,,,,.
+      :;                       , L: """
 
 
 LOGO = _generate_logo()
 
 LOGO_COMPACT = """
-  ╔════════════════════════════════════════════════════╗
-  ║  FindEvil ── Autonomous DFIR Analysis Agent v2.1  ║
-  ╚════════════════════════════════════════════════════╝
+                           ;
+     Et                          ED.
+     E#t          L.             E#Wi                       ,;
+     E##t     t   EW:        ,ft E###G.                   f#i            t              i
+     E#W#t    Ej  E##;       t#E E#fD#W;                .E#t             Ej            LE
+     E#tfL.   E#, E###t      t#E E#t t##L              i#W,   t      .DD.E#,          L#E
+     E#t      E#t E#fE#f     t#E E#t  .E#K,           L#D.    EK:   ,WK. E#t         G#W.
+  ,ffW#Dffj.  E#t E#t D#G    t#E E#t    j##f        :K#Wfff;  E#t  i#D   E#t        D#K.
+   ;LW#ELLLf. E#t E#t  f#E.  t#E E#t    :E#K:       i##WLLLLt E#t j#f    E#t       E#K.
+     E#t      E#t E#t   t#K: t#E E#t   t##L          .E#L     E#tL#i     E#t     .E#E.
+     E#t      E#t E#t    ;#W,t#E E#t .D#W;             f#E:   E#WW,      E#t    .K#E
+     E#t      E#t E#t     :K#D#E E#tiW#G.               ,WW;  E#K:       E#t   .K#D
+     E#t      E#t E#t      .E##E E#K##i                  .D#; ED.        E#t  .W#G
+     E#t      E#t ..         G#E E##D.                     tt t          E#t :W##########Wt
+     ;#t      ,;.             fE E#t                                     ,;. :,,,,,,,,,,,,,.
+      :;                       , L:
 """
 
 # ANSI color sequences for terminal coloring (fallback when rich unavailable)

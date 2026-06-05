@@ -13,6 +13,7 @@ from typing import Any, Optional
 from .groq_client import GroqDFIRClient
 from .output_parser import parse_tool_decision, parse_report
 from .prompts import DFIR_ANALYST_PROMPT
+from .tool_selector import suggest_next_tools, get_tool_for_artifact, get_fallback_chain
 
 logger = logging.getLogger("findevil-agent")
 
@@ -151,6 +152,46 @@ class DFIRWorkflow:
         logger.info(f"Evidence: {evidence_path[:200]}" if evidence_path else "Evidence: (none)")
         self._evidence_path = evidence_path
 
+        # Pre-validate evidence exists and is accessible (before any tool calls)
+        if evidence_path:
+            import os as _os
+            from pathlib import Path as _Path
+            ev_path = _Path(evidence_path)
+            if not ev_path.exists():
+                self.state.status = "aborted"
+                return self._build_result(json.dumps({
+                    "summary": "Evidence path does not exist",
+                    "findings": [{"type": "error", "description": f"Evidence not found: {evidence_path}"}],
+                    "errors": [f"Evidence path does not exist: {evidence_path}"],
+                }))
+            if ev_path.is_dir():
+                # For directories, check they're non-empty
+                try:
+                    contents = list(ev_path.iterdir())
+                    if not contents:
+                        logger.warning(f"Evidence directory is empty: {evidence_path}")
+                except PermissionError:
+                    self.state.status = "aborted"
+                    return self._build_result(json.dumps({
+                        "summary": "Cannot access evidence directory",
+                        "findings": [{"type": "error", "description": f"Permission denied: {evidence_path}"}],
+                    }))
+            elif ev_path.stat().st_size == 0:
+                self.state.status = "aborted"
+                return self._build_result(json.dumps({
+                    "summary": "Evidence file is empty",
+                    "findings": [{"type": "error", "description": f"Empty file: {evidence_path}"}],
+                }))
+
+        # Log whether LLM is available
+        if self.groq.available:
+            logger.info("Groq LLM available — using AI-powered analysis")
+        else:
+            logger.info(
+                "Groq LLM NOT available — running in deterministic mode. "
+                "Set GROQ_API_KEY for LLM-enhanced analysis."
+            )
+
         self.state.add_finding({
             "type": "case_info",
             "description": f"Case initiated: {task}",
@@ -172,6 +213,9 @@ class DFIRWorkflow:
                 break
 
             await self._execute_phase()
+
+        # Mark as completed
+        self.state.status = "completed"
 
         # Generate final report using Groq
         report = await self._generate_report()
@@ -229,7 +273,7 @@ class DFIRWorkflow:
                 logger.warning(f"  ❌ {tool_name} exception: {e}")
 
                 # Self-correction: try fallback tools
-                fallbacks = self.FALLBACKS.get(tool_name, [])
+                fallbacks = self.FALLBACK_CHAINS.get(tool_name, [])
                 for fb in fallbacks:
                     if self.state.consecutive_failures >= 3:
                         break
@@ -241,8 +285,9 @@ class DFIRWorkflow:
             self.state.record_call(tool_call)
 
     async def _get_phase_tools(self) -> list:
-        """Get tools for current phase, using LLM when possible."""
+        """Get tools for current phase, using LLM when possible, falling back to tool_selector."""
         defaults = self.DEFAULT_TOOLS.get(self.current_phase, [])
+        tool_selector_tools = suggest_next_tools(self.current_phase)
 
         # For first run or when we have results, let LLM decide
         if self.state.last_tool_results and self.current_phase not in ("initial_triage",):
@@ -256,7 +301,11 @@ class DFIRWorkflow:
                     logger.info(f"  🤖 LLM tool selection: {llm_decision}")
                     return [t.get("name", t) if isinstance(t, dict) else t for t in llm_decision]
             except Exception as e:
-                logger.warning(f"LLM tool selection failed: {e}")
+                logger.warning(f"LLM tool selection failed, using tool_selector fallback: {e}")
+
+        # Fallback to tool_selector's registry (prioritized)
+        if tool_selector_tools:
+            return [t["tool"] for t in tool_selector_tools]
 
         return defaults
 
@@ -334,31 +383,100 @@ class DFIRWorkflow:
 
         self.state.record_call(tool_call)
 
+    # ── Confidence Scoring System ───────────────────────────────────
+    # Scoring logic: each finding is evaluated on data quality + tool reliability.
+    # Higher weight = more likely CONFIRMED. Scoring based on concrete output data.
+
+    _CONFIDENCE_WEIGHTS: dict[str, dict] = {
+        # Tool: {field_to_check, min_meaningful_value, threshold_for_confirmed}
+        "fs_partition_scan": {"field": "partition_count", "min_meaningful": 0, "confirmed_at": 1},
+        "fs_list_files": {"field": "file_count", "min_meaningful": 0, "confirmed_at": 2},
+        "verify_hash": {"field": "hash", "min_meaningful": 1, "confirmed_at": 1},  # Any hash is meaningful
+        "list_evidence": {"field": "file_count", "min_meaningful": 0, "confirmed_at": 1},
+        "fs_filesystem_info": {"field": "fsstat_output", "min_meaningful": 10, "confirmed_at": 50},
+        "fs_extract_file": {"field": "size", "min_meaningful": 0, "confirmed_at": 1},  # Any extracted data
+        "carve_files": {"field": "carved_files", "min_meaningful": 0, "confirmed_at": 1},
+        "scan_yara": {"field": "match_count", "min_meaningful": 1, "confirmed_at": 1},  # Matches are always notable
+        "mem_list_processes": {"field": "data", "min_meaningful": 1, "confirmed_at": 2},
+        "mem_scan_network": {"field": "data", "min_meaningful": 1, "confirmed_at": 2},
+        "mem_dump_cmdline": {"field": "data", "min_meaningful": 1, "confirmed_at": 2},
+        "mem_analyze": {"field": "data", "min_meaningful": 1, "confirmed_at": 2},
+        "reg_analyze_hive": {"field": "key_count", "min_meaningful": 0, "confirmed_at": 3},
+        "pcap_analyze": {"field": "packet_count", "min_meaningful": 0, "confirmed_at": 2},
+        "pcap_list_protocols": {"field": "protocols", "min_meaningful": 1, "confirmed_at": 3},
+        "timeline_build": {"field": "storage_path", "min_meaningful": 1, "confirmed_at": 1},
+        "timeline_filter": {"field": "event_count", "min_meaningful": 1, "confirmed_at": 5},
+        "extract_features": {"field": "feature_files", "min_meaningful": 0, "confirmed_at": 1},
+        "get_audit_logs": {"field": "total_entries", "min_meaningful": 1, "confirmed_at": 1},
+    }
+
+    def _assess_confidence(self, tool_name: str, result: dict) -> str:
+        """Assess finding confidence based on data quality and tool reliability.
+
+        CONFIRMED: Tool returned meaningful, verifiable data.
+        INFERRED: Tool returned data but it's indirect or minimal.
+        UNVERIFIED: Tool returned success but no meaningful data (or fallback mode).
+        """
+        if not result.get("success"):
+            return "UNVERIFIED"
+
+        weights = self._CONFIDENCE_WEIGHTS.get(tool_name, {})
+        if not weights:
+            return "INFERRED"
+
+        field = weights["field"]
+        raw_value = result.get(field)
+
+        # Get the "value" to score
+        if field == "data":
+            value = len(raw_value) if isinstance(raw_value, (list, dict)) else (1 if raw_value else 0)
+        elif field in ("fsstat_output", "protocols", "storage_path"):
+            value = len(str(raw_value)) if raw_value else 0
+        else:
+            value = raw_value if isinstance(raw_value, (int, float)) else (1 if raw_value else 0)
+
+        min_val = weights["min_meaningful"]
+        confirmed_at = weights["confirmed_at"]
+
+        if value >= confirmed_at:
+            return "CONFIRMED"
+        elif value >= min_val:
+            return "INFERRED"
+        else:
+            return "UNVERIFIED"
+
     def _extract_findings(self, tool_name: str, result: dict):
-        """Extract structured findings from tool output."""
+        """Extract structured findings from tool output with proper confidence scoring."""
         mapping = {
-            "fs_partition_scan": ("partition_table", f"Found {result.get('partition_count', 0)} partitions"),
-            "fs_list_files": ("file_listing", f"Listed {result.get('file_count', 0)} files/directories"),
-            "verify_hash": ("integrity_check", f"Hash ({result.get('algorithm')}): {str(result.get('hash', ''))[:20]}..."),
-            "list_evidence": ("evidence_inventory", f"Found {result.get('file_count', 0)} evidence files"),
-            "fs_filesystem_info": ("filesystem_info", f"Filesystem analysis complete"),
-            "fs_extract_file": ("file_extracted", f"Extracted inode content ({result.get('size', 0)} bytes)"),
-            "carve_files": ("carving", f"Carved {result.get('file_count', 0)} files"),
-            "scan_yara": ("yara_scan", f"Found {result.get('match_count', 0)} YARA matches"),
-            "mem_list_processes": ("process_list", f"Found {len(result.get('data', []))} processes in memory"),
-            "mem_scan_network": ("network_connections", f"Found {len(result.get('data', []))} network connections"),
-            "reg_analyze_hive": ("registry_analysis", f"Queried registry, found {result.get('key_count', 0)} keys"),
-            "pcap_analyze": ("network_traffic", f"Analyzed {result.get('packet_count', 0)} packets"),
-            "pcap_list_protocols": ("pcap_protocols", "Extracted protocol hierarchy"),
-            "get_audit_logs": ("audit_trail", f"{result.get('total_entries', 0)} tool calls logged"),
+            "fs_partition_scan": ("partition_table", lambda r: f"Found {r.get('partition_count', 0)} partitions"),
+            "fs_list_files": ("file_listing", lambda r: f"Listed {r.get('file_count', 0)} files/directories"),
+            "verify_hash": ("integrity_check", lambda r: f"Hash ({r.get('algorithm')}): {str(r.get('hash', ''))[:20]}..."),
+            "list_evidence": ("evidence_inventory", lambda r: f"Found {r.get('file_count', 0)} evidence files"),
+            "fs_filesystem_info": ("filesystem_info", lambda r: "Filesystem analysis complete"),
+            "fs_extract_file": ("file_extracted", lambda r: f"Extracted inode content ({r.get('size', 0)} bytes)"),
+            "carve_files": ("carving", lambda r: f"Carved {r.get('carved_files', r.get('file_count', 0))} files"),
+            "scan_yara": ("yara_scan", lambda r: f"Found {r.get('match_count', 0)} YARA matches"),
+            "mem_list_processes": ("process_list", lambda r: f"Found {len(r.get('data', []))} processes in memory"),
+            "mem_scan_network": ("network_connections", lambda r: f"Found {len(r.get('data', []))} network connections"),
+            "mem_dump_cmdline": ("cmdline", lambda r: f"Found {len(r.get('data', []))} command lines"),
+            "mem_analyze": ("memory_analysis", lambda r: f"Memory analysis: {r.get('plugin', 'unknown')} plugin"),
+            "reg_analyze_hive": ("registry_analysis", lambda r: f"Queried registry, found {r.get('key_count', 0)} keys"),
+            "pcap_analyze": ("network_traffic", lambda r: f"Analyzed {r.get('packet_count', 0)} packets"),
+            "pcap_list_protocols": ("pcap_protocols", lambda r: "Extracted protocol hierarchy"),
+            "timeline_build": ("timeline", lambda r: f"Timeline built: {r.get('storage_path', 'N/A')}"),
+            "timeline_filter": ("timeline_events", lambda r: f"Found {r.get('event_count', 0)} timeline events"),
+            "extract_features": ("feature_extraction", lambda r: f"Extracted {r.get('feature_files', 0)} feature files"),
+            "get_audit_logs": ("audit_trail", lambda r: f"{r.get('total_entries', 0)} tool calls logged"),
         }
 
         if tool_name in mapping and result.get("success"):
-            ftype, desc = mapping[tool_name]
+            ftype, desc_fn = mapping[tool_name]
+            desc = desc_fn(result)
+            confidence = self._assess_confidence(tool_name, result)
             self.state.add_finding({
                 "type": ftype,
                 "description": desc,
-                "confidence": "CONFIRMED" if result.get("success") else "UNVERIFIED",
+                "confidence": confidence,
                 "tool": tool_name,
                 "details": result,
             })
@@ -401,7 +519,7 @@ class DFIRWorkflow:
 
     def _build_result(self, report: str) -> dict:
         return {
-            "success": self.state.status == "running",
+            "success": self.state.status in ("running", "completed"),
             "status": self.state.status,
             "summary": self.state.get_summary(),
             "findings": self.state.findings,

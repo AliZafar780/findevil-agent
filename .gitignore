@@ -5,34 +5,33 @@ __pycache__/
 dist/
 build/
 *.egg
-*.whl
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environment
 venv/
-.env
+.venv/
+env/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-.DS_Store
 
-# Project specific
-protocol-sift/
-*.bak-*
-*.log
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Results & evidence (runtime artifacts)
 /results/
 /evidence/
 
-# Test & build artifacts
-.pytest_cache/
-.coverage
-htmlcov/
-*.egg-info/
-__pycache__/
-
-# OS
-Thumbs.db
-.DS_Store*
+# Generated files
+*.plaso
+*.jsonl

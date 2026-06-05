@@ -28,8 +28,8 @@ TOOL_REGISTRY = {
             "priority": 2,
         },
         {
-            "tool": "fs_get_stats",
-            "description": "Get file system metadata",
+            "tool": "fs_filesystem_info",
+            "description": "Get file system metadata via fsstat",
             "priority": 3,
         },
     ],
@@ -45,8 +45,8 @@ TOOL_REGISTRY = {
             "priority": 2,
         },
         {
-            "tool": "mem_scan_malware",
-            "description": "Scan memory for malware signatures",
+            "tool": "mem_dump_cmdline",
+            "description": "Extract command lines from memory processes",
             "priority": 3,
         },
     ],
@@ -60,6 +60,11 @@ TOOL_REGISTRY = {
             "tool": "timeline_filter",
             "description": "Filter timeline by date range or event type",
             "priority": 2,
+        },
+        {
+            "tool": "extract_features",
+            "description": "Extract emails, URLs, credentials as timeline supplements",
+            "priority": 3,
         },
     ],
     "artifact_extraction": [
@@ -117,8 +122,16 @@ def get_fallback_chain(tool: str) -> list:
     """Get alternative tools when the primary tool fails."""
     fallbacks = {
         "fs_list_files": ["carve_files"],
-        "mem_list_processes": ["mem_analyze"],
-        "timeline_build": ["fs_list_files", "extract_features"],
+        "fs_extract_file": ["carve_files", "scan_yara"],
+        "fs_partition_scan": ["fs_filesystem_info", "list_evidence"],
+        "scan_yara": ["carve_files", "extract_features", "verify_hash"],
+        "mem_list_processes": ["mem_analyze", "mem_dump_cmdline"],
+        "mem_analyze": ["mem_list_processes", "mem_dump_cmdline"],
+        "mem_scan_network": ["mem_analyze"],
+        "mem_dump_cmdline": ["mem_analyze"],
+        "pcap_analyze": ["pcap_list_protocols"],
+        "reg_analyze_hive": ["fs_list_files", "scan_yara"],
+        "timeline_build": ["extract_features"],
         "carve_files": ["extract_features"],
     }
     return fallbacks.get(tool, ["fs_list_files", "verify_hash"])

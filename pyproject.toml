@@ -1,7 +1,7 @@
 [project]
 name = "findevil-agent"
 version = "2.1.1"
-description = "Autonomous DFIR analysis agent — AI-powered digital forensics with 21 MCP tools, Groq integration, and 96 passing tests"
+description = "Autonomous DFIR analysis agent — AI-powered digital forensics with 21 MCP tools, Groq integration, CI/CD pipeline, Docker deployment, and 96+ passing tests. Runs in deterministic mode without API key."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

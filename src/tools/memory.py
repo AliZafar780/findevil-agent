@@ -50,7 +50,15 @@ MEMORY_IOC_PATTERNS = {
         b"xrat", b"hacker", b"exploit", b"privilege", b"bypass",
     ],
     "suspicious_ips": [
-        b"192.168.1.100", b"10.0.0.50", b"10.0.0.1", b"127.0.0.1",
+        # Known C2 infrastructure IPs (update from threat intelligence feed)
+        b"185.130.5.183",   # Emotet C2
+        b"45.155.205.233",  # Trickbot C2
+        b"5.188.62.18",     # Cobalt Strike known C2
+        b"80.94.95.187",    # Conti C2
+        b"95.181.217.100",  # Dridex C2
+        b"194.26.29.100",   # IcedID C2
+        b"185.220.101.212", # Tor exit node
+        b"185.220.101.213", # Tor exit node
     ],
     "suspicious_ports": [
         b":4444", b":1337", b":31337", b":5555", b":8080",

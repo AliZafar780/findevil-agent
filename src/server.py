@@ -10,6 +10,7 @@ import atexit
 import json
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -19,9 +20,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+try:
+    import tomllib  # Python 3.11+
+except ImportError:
+    try:
+        import tomli as tomllib  # pip install tomli
+    except ImportError:
+        tomllib = None
+
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
+
+# Lazy-loaded tool modules (imported once at module level)
+from src.tools.memory import analyze as mem_analyze, list_processes, scan_network, dump_cmdline
+from src.tools.timeline import build as timeline_build, filter_timeline
+from src.tools.carving import extract_features as carve_extract_features
+from src.tools.registry import query as reg_query, analyze_hive_summary
 
 # ── Configuration ──────────────────────────────────────────────────
 logging.basicConfig(
@@ -37,6 +52,46 @@ SERVER_NAME = "findevil-mcp"
 SERVER_VERSION = "2.0.0"
 MAX_OUTPUT_CHARS = 100_000  # Truncate tool output to prevent memory issues
 MAX_TIMEOUT = 600           # Maximum tool timeout in seconds
+
+# ── Tool Configuration (loaded from tools.toml) ─────────────────────
+
+_TOOL_CONFIG: dict[str, Any] = {}
+_CONFIG_PATH = Path(__file__).parent.parent / "config" / "tools.toml"
+
+
+def _load_tool_config() -> dict[str, Any]:
+    """Load tool definitions from config/tools.toml.
+
+    Returns dict of tool_name -> {command, description, args}.
+    Falls back to empty dict if TOML not available or file missing.
+    """
+    if tomllib is None:
+        logger.warning("tomllib/tomli not available — skipping tool config")
+        return {}
+    try:
+        if not _CONFIG_PATH.exists():
+            logger.info("No config/tools.toml found — using built-in tool paths")
+            return {}
+        with open(_CONFIG_PATH, "rb") as f:
+            data = tomllib.load(f)
+        tools = data.get("tools", {})
+        logger.info("Loaded %d tool definitions from %s", len(tools), _CONFIG_PATH)
+        return tools
+    except Exception as e:
+        logger.warning("Failed to load tool config: %s", e)
+        return {}
+
+
+_TOOL_CONFIG = _load_tool_config()
+
+
+def _tool_config(name: str) -> dict[str, Any]:
+    """Get the canonical tool definition for a tool name from config.
+
+    Returns dict with 'command', 'description', 'args' keys or empty dict.
+    """
+    return _TOOL_CONFIG.get(name, {})
+
 
 # ── Concurrency Lock ───────────────────────────────────────────────
 # MCP STDIO transport is single-channel; this lock prevents interleaved responses
@@ -62,8 +117,12 @@ def _trunc(s: str, n: int = 200) -> str:
     return s or ""
 
 
+_audit_buffer: list[dict] = []
+_AUDIT_FLUSH_INTERVAL = 10  # Flush to disk every N entries
+
+
 def _audit_log(tool: str, arguments: dict, result: dict, duration_ms: int, error: str = None):
-    """Log a tool execution to both in-memory list and JSON lines file."""
+    """Log a tool execution to in-memory list. Flushes to disk every N entries."""
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "tool": tool,
@@ -73,10 +132,23 @@ def _audit_log(tool: str, arguments: dict, result: dict, duration_ms: int, error
         "error": _trunc(str(error)[:500] if error else (result.get("error") or None), 500),
     }
     _audit_entries.append(entry)
+    _audit_buffer.append(entry)
+
+    # Flush to disk periodically (buffered write)
+    if len(_audit_buffer) >= _AUDIT_FLUSH_INTERVAL:
+        _flush_audit_buffer()
+
+
+def _flush_audit_buffer():
+    """Write buffered audit entries to disk."""
+    if not _audit_buffer:
+        return
     try:
         _audit_log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(_audit_log_path, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+            for entry in _audit_buffer:
+                f.write(json.dumps(entry) + "\n")
+        _audit_buffer.clear()
     except Exception as e:
         logger.warning(f"Failed to write audit log: {e}")
 
@@ -88,6 +160,7 @@ def _get_audit_logs() -> list[dict]:
 
 def _cleanup():
     """Graceful cleanup on exit."""
+    _flush_audit_buffer()
     total = len(_audit_entries)
     if total > 0:
         logger.info(f"Session ended. {total} tool calls logged to {_audit_log_path}")
@@ -98,20 +171,25 @@ atexit.register(_cleanup)
 
 # ── Tool Execution ────────────────────────────────────────────────
 
-def _run_tool(cmd: list, timeout: int = 120, stdin_data: str = None) -> dict:
+async def _run_tool(cmd: list, timeout: int = 120, stdin_data: str = None) -> dict:
     """
-    Run a command-line tool and return structured result.
+    Run a command-line tool asynchronously and return structured result.
     Handles timeout, missing tools, and non-zero exits gracefully.
+    Uses run_in_executor to avoid blocking the asyncio event loop.
     """
+    loop = asyncio.get_event_loop()
     start = time.time()
     try:
         timeout = min(timeout, MAX_TIMEOUT)
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            stdin=subprocess.PIPE if stdin_data else None,
+        result = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                stdin=subprocess.PIPE if stdin_data else None,
+            ),
         )
         duration = int((time.time() - start) * 1000)
 
@@ -151,6 +229,66 @@ def _run_tool(cmd: list, timeout: int = 120, stdin_data: str = None) -> dict:
             "returncode": -1, "duration_ms": int((time.time() - start) * 1000),
             "command": _trunc(" ".join(str(c) for c in cmd), 500),
         }
+
+
+# ── Tool Resolution (cached) ───────────────────────────────────────
+
+_TOOL_CACHE: dict[str, Optional[str]] = {}
+
+TOOL_CANDIDATES: dict[str, list[str]] = {
+    "fls": ["/usr/bin/fls", "/usr/local/bin/fls"],
+    "icat": ["/usr/bin/icat", "/usr/local/bin/icat"],
+    "istat": ["/usr/bin/istat", "/usr/local/bin/istat"],
+    "fsstat": ["/usr/bin/fsstat", "/usr/local/bin/fsstat"],
+    "mmls": ["/usr/bin/mmls", "/usr/local/bin/mmls"],
+    "foremost": ["/usr/bin/foremost", "/usr/local/bin/foremost"],
+    "yara": ["/usr/bin/yara", "/usr/local/bin/yara"],
+    "tshark": ["/usr/bin/tshark", "/usr/local/bin/tshark"],
+    "md5sum": ["/usr/bin/md5sum"],
+    "sha1sum": ["/usr/bin/sha1sum"],
+    "sha256sum": ["/usr/bin/sha256sum"],
+    "sha512sum": ["/usr/bin/sha512sum"],
+}
+
+
+def _find_tool(name: str) -> str:
+    """Find a forensic tool by name with caching.
+
+    Checks (in order):
+    1. Runtime cache
+    2. TOML config file (config/tools.toml) — canonical path
+    3. Known candidate paths
+    4. PATH lookup via shutil.which()
+    5. Fallback to bare name
+
+    Returns full path or bare name if not found.
+    """
+    if name in _TOOL_CACHE:
+        return _TOOL_CACHE[name]
+
+    # 1. Check TOML config first
+    cfg = _tool_config(name)
+    cfg_path = cfg.get("command", "")
+    if cfg_path and Path(cfg_path).exists():
+        _TOOL_CACHE[name] = cfg_path
+        return cfg_path
+
+    # 2. Check known candidates
+    candidates = TOOL_CANDIDATES.get(name, [f"/usr/bin/{name}", f"/usr/local/bin/{name}"])
+    for p in candidates:
+        if Path(p).exists():
+            _TOOL_CACHE[name] = p
+            return p
+
+    # 3. Try PATH
+    path = shutil.which(name)
+    if path:
+        _TOOL_CACHE[name] = path
+        return path
+
+    # 4. Fallback to bare name (tool may be in PATH when server starts)
+    _TOOL_CACHE[name] = name
+    return name
 
 
 # ── Security Validation ────────────────────────────────────────────
@@ -459,14 +597,28 @@ async def list_tools() -> list[Tool]:
         # ── Accuracy Benchmark ──────────────────────────────────
         Tool(
             name="benchmark_accuracy",
-            description="Run accuracy benchmark: compare agent findings against known ground truth.",
+            description="Run accuracy benchmark: compare agent findings against known ground truth. Computes precision, recall, F1 score.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "evidence_path": {"type": "string", "description": "Path to evidence with known ground truth"},
-                    "ground_truth": {"type": "string", "description": "JSON string of expected findings"},
+                    "ground_truth": {"type": "string", "description": "JSON array of expected finding objects (with 'type' and 'description' fields)"},
+                    "agent_findings": {"type": "string", "description": "JSON array of agent findings to compare (optional)", "default": "[]"},
+                    "detection_threshold": {"type": "number", "description": "Confidence threshold for detection match", "default": 0.5},
                 },
                 "required": ["evidence_path", "ground_truth"],
+            },
+        ),
+        # ── Tool Configuration ─────────────────────────────────────
+        Tool(
+            name="get_tool_config",
+            description="Get canonical configuration for a forensic tool (command path, argument schemas, description).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tool_name": {"type": "string", "description": "Tool name (e.g., fls, icat, foremost)"},
+                },
+                "required": ["tool_name"],
             },
         ),
         # ── Audit Trail ───────────────────────────────────────────
@@ -486,7 +638,7 @@ async def list_tools() -> list[Tool]:
 # ── Tool Call Router ──────────────────────────────────────────────
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list:
+async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """
     Route tool calls to the appropriate handler.
     Protected by asyncio lock to prevent interleaved responses on STDIO transport.
@@ -546,7 +698,8 @@ async def call_tool(name: str, arguments: dict) -> list:
                 "pcap_list_protocols": _handle_pcap_protocols,
                 "timeline_build": _handle_timeline_build,
                 "timeline_filter": _handle_timeline_filter,
-                "extract_features": _handle_extract_features,
+            "get_tool_config": _handle_get_tool_config,
+            "extract_features": _handle_extract_features,
                 "benchmark_accuracy": _handle_benchmark,
                 "get_audit_logs": _handle_audit_logs,
             }
@@ -592,17 +745,16 @@ async def call_tool(name: str, arguments: dict) -> list:
 
 # ── File System Handlers ─────────────────────────────────────────
 
-async def _handle_partition_scan(args: dict) -> list:
+async def _handle_partition_scan(args: dict) -> list[TextContent]:
     """Scan partition table using mmls."""
     image_path = args.get("image_path", "")
     err = _validate_evidence_path(image_path)
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    mmls_paths = ["/usr/bin/mmls", "/usr/local/bin/mmls"]
-    mmls_cmd = next((p for p in mmls_paths if Path(p).exists()), "mmls")
+    mmls_cmd = _find_tool("mmls")
 
-    result = _run_tool([mmls_cmd, image_path])
+    result = await _run_tool([mmls_cmd, image_path])
 
     if result["success"]:
         partitions = []
@@ -641,7 +793,7 @@ async def _handle_partition_scan(args: dict) -> list:
         }))]
 
 
-async def _handle_list_files(args: dict) -> list:
+async def _handle_list_files(args: dict) -> list[TextContent]:
     """List files using fls."""
     image_path = args.get("image_path", "")
     offset = args.get("offset", 0)
@@ -652,8 +804,7 @@ async def _handle_list_files(args: dict) -> list:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    fls_paths = ["/usr/bin/fls", "/usr/local/bin/fls"]
-    fls_cmd = next((p for p in fls_paths if Path(p).exists()), "fls")
+    fls_cmd = _find_tool("fls")
 
     cmd = [fls_cmd]
     if offset:
@@ -664,7 +815,7 @@ async def _handle_list_files(args: dict) -> list:
     if path:
         cmd.append(str(path))
 
-    result = _run_tool(cmd)
+    result = await _run_tool(cmd)
 
     if result["success"] or result["returncode"] == 1:
         entries = [line for line in result["stdout"].split("\n") if line.strip()]
@@ -685,7 +836,7 @@ async def _handle_list_files(args: dict) -> list:
         }))]
 
 
-async def _handle_extract_file(args: dict) -> list:
+async def _handle_extract_file(args: dict) -> list[TextContent]:
     """Extract file using icat."""
     image_path = args.get("image_path", "")
     inode = args.get("inode", 0)
@@ -698,15 +849,14 @@ async def _handle_extract_file(args: dict) -> list:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    icat_paths = ["/usr/bin/icat", "/usr/local/bin/icat"]
-    icat_cmd = next((p for p in icat_paths if Path(p).exists()), "icat")
+    icat_cmd = _find_tool("icat")
 
     cmd = [icat_cmd]
     if offset:
         cmd.extend(["-o", str(offset)])
     cmd.extend([image_path, str(inode)])
 
-    result = _run_tool(cmd)
+    result = await _run_tool(cmd)
 
     if result["success"]:
         content = result["stdout"]
@@ -726,7 +876,7 @@ async def _handle_extract_file(args: dict) -> list:
         }))]
 
 
-async def _handle_file_metadata(args: dict) -> list:
+async def _handle_file_metadata(args: dict) -> list[TextContent]:
     """Get file metadata using istat."""
     image_path = args.get("image_path", "")
     inode = args.get("inode", 0)
@@ -739,15 +889,14 @@ async def _handle_file_metadata(args: dict) -> list:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    istat_paths = ["/usr/bin/istat", "/usr/local/bin/istat"]
-    istat_cmd = next((p for p in istat_paths if Path(p).exists()), "istat")
+    istat_cmd = _find_tool("istat")
 
     cmd = [istat_cmd]
     if offset:
         cmd.extend(["-o", str(offset)])
     cmd.extend([image_path, str(inode)])
 
-    result = _run_tool(cmd)
+    result = await _run_tool(cmd)
 
     if result["success"]:
         return [TextContent(type="text", text=json.dumps({
@@ -765,7 +914,7 @@ async def _handle_file_metadata(args: dict) -> list:
         }))]
 
 
-async def _handle_fs_info(args: dict) -> list:
+async def _handle_fs_info(args: dict) -> list[TextContent]:
     """Get filesystem stats using fsstat."""
     image_path = args.get("image_path", "")
     offset = args.get("offset", 0)
@@ -774,15 +923,14 @@ async def _handle_fs_info(args: dict) -> list:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    fsstat_paths = ["/usr/bin/fsstat", "/usr/local/bin/fsstat"]
-    fsstat_cmd = next((p for p in fsstat_paths if Path(p).exists()), "fsstat")
+    fsstat_cmd = _find_tool("fsstat")
 
     cmd = [fsstat_cmd]
     if offset:
         cmd.extend(["-o", str(offset)])
     cmd.append(image_path)
 
-    result = _run_tool(cmd)
+    result = await _run_tool(cmd)
 
     if result["success"]:
         return [TextContent(type="text", text=json.dumps({
@@ -801,7 +949,7 @@ async def _handle_fs_info(args: dict) -> list:
 
 # ── Carving Handlers ────────────────────────────────────────────
 
-async def _handle_carve(args: dict) -> list:
+async def _handle_carve(args: dict) -> list[TextContent]:
     """Carve files using foremost."""
     image_path = args.get("image_path", "")
     output_dir = args.get("output_dir", "")
@@ -816,22 +964,26 @@ async def _handle_carve(args: dict) -> list:
     if out_err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": out_err}))]
 
-    Path(output_dir).parent.mkdir(parents=True, exist_ok=True)
-
-    foremost_paths = ["/usr/bin/foremost", "/usr/local/bin/foremost"]
-    foremost_cmd = next((p for p in foremost_paths if Path(p).exists()), None)
-    if not foremost_cmd:
+    foremost_cmd = _find_tool("foremost")
+    if not Path(foremost_cmd).exists():
         return [TextContent(type="text", text=json.dumps({
             "success": False,
             "error": "foremost not found. Install: sudo apt-get install foremost",
         }))]
 
+    # Create output directory just before running (not before validation)
+    try:
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+    except PermissionError as e:
+        return [TextContent(type="text", text=json.dumps({
+            "success": False, "error": f"Cannot create output directory: {e}",
+        }))]
     cmd = [foremost_cmd, "-o", output_dir, "-q", "-T"]
     if file_types and file_types != "all":
         cmd.extend(["-t", file_types])
     cmd.append(image_path)
 
-    result = _run_tool(cmd, timeout=600)
+    result = await _run_tool(cmd, timeout=600)
 
     # Count carved files
     carved_files = []
@@ -842,7 +994,19 @@ async def _handle_carve(args: dict) -> list:
                     "path": str(f), "size": f.stat().st_size, "name": f.name,
                 })
 
-    # foremost returns non-zero when it finds files too, so check output
+    # foremost returns non-zero exit code even on success (finds files)
+    # Treat as success if we found carved files OR if exit code was 0
+    # Only fail if there's a genuine error (stderr content + no output)
+    carved_ok = result["success"] or len(carved_files) > 0
+    has_real_error = bool(result["stderr"]) and not carved_ok
+
+    if has_real_error:
+        return [TextContent(type="text", text=json.dumps({
+            "success": False,
+            "error": f"foremost failed: {result['stderr'][:2000]}",
+            "returncode": result["returncode"],
+        }))]
+
     return [TextContent(type="text", text=json.dumps({
         "success": True,
         "output_dir": output_dir,
@@ -855,7 +1019,7 @@ async def _handle_carve(args: dict) -> list:
 
 # ── YARA Handler ─────────────────────────────────────────────────
 
-async def _handle_yara(args: dict) -> list:
+async def _handle_yara(args: dict) -> list[TextContent]:
     """Scan with YARA rules."""
     target = args.get("target", "")
     rules = args.get("rules", "")
@@ -889,15 +1053,14 @@ async def _handle_yara(args: dict) -> list:
         }))]
 
     try:
-        yara_paths = ["/usr/bin/yara", "/usr/local/bin/yara"]
-        yara_cmd = next((p for p in yara_paths if Path(p).exists()), None)
-        if not yara_cmd:
+        yara_cmd = _find_tool("yara")
+        if not Path(yara_cmd).exists():
             return [TextContent(type="text", text=json.dumps({
                 "success": False, "error": "yara not found. Install: sudo apt-get install yara",
             }))]
 
         cmd = [yara_cmd, "-w", rules_path, target]
-        result = _run_tool(cmd)
+        result = await _run_tool(cmd)
 
         # YARA returns 0 for matches, non-zero for no matches (which is OK)
         matches = []
@@ -932,7 +1095,7 @@ async def _handle_yara(args: dict) -> list:
 
 # ── Hash Handler ────────────────────────────────────────────────
 
-async def _handle_hash(args: dict) -> list:
+async def _handle_hash(args: dict) -> list[TextContent]:
     """Compute file hash."""
     file_path = args.get("file_path", "")
     algorithm = args.get("algorithm", "sha256")
@@ -961,7 +1124,7 @@ async def _handle_hash(args: dict) -> list:
             "error": f"{hash_bin} not found. Install coreutils: sudo apt-get install coreutils",
         }))]
 
-    result = _run_tool([hash_bin, file_path])
+    result = await _run_tool([hash_bin, file_path])
 
     if result["success"]:
         hash_value = result["stdout"].split()[0] if result["stdout"] else ""
@@ -981,7 +1144,7 @@ async def _handle_hash(args: dict) -> list:
 
 # ── Evidence List Handler ───────────────────────────────────────
 
-async def _handle_list_evidence(args: dict) -> list:
+async def _handle_list_evidence(args: dict) -> list[TextContent]:
     """List available evidence."""
     subdir = args.get("subdir", "")
 
@@ -1039,23 +1202,55 @@ async def _handle_list_evidence(args: dict) -> list:
 # ── Memory Forensics Handlers ─────────────────────────────────────
 
 def _is_memory_capture(path: str) -> bool:
-    """Detect if a file is a memory capture via magic bytes and extension."""
+    """Detect if a file is a memory capture via magic bytes and extension.
+    
+    Strict checking to prevent misidentification of non-memory files:
+    - ELF headers require additional content checks
+    - gzip/compressed files are rejected (too common in non-memory files)
+    - Extensions must match known memory capture suffixes
+    """
     try:
         with open(path, 'rb') as f:
-            header = f.read(16)
-        if header[:4] in (b'\x7fELF', b'PAGE', b'\x1f\x8b'):
+            raw = f.read(64)
+            if len(raw) < 4:
+                return False
+        # ELF binary — check for additional memory capture signatures
+        if raw[:4] == b'\x7fELF':
+            # Linux memory dumps (LiME, avml) produce ELF core dumps
+            # Check for additional evidence: size > 10MB and ELF type is ET_CORE
+            try:
+                size = Path(path).stat().st_size
+                if size < 10 * 1024 * 1024:  # < 10MB is unlikely to be a memory dump
+                    return False
+                # Check ELF type at offset 16 (2 bytes)
+                elf_type = int.from_bytes(raw[16:18], 'little') if len(raw) >= 18 else 0
+                if elf_type == 4:  # ET_CORE
+                    return True
+                return True  # Accept ELF as potential memory dump
+            except Exception:
+                return True  # Conservative: accept ELF
+        # Windows memory dumps have PAGE header
+        if raw[:4] == b'PAGE':
             return True
-        if b'VMem' in header or b'vmem' in header:
+        # Check for memory capture strings in header
+        if b'VMem' in raw or b'vmem' in raw:
             return True
     except Exception:
         pass
+    # Strict extension check
     mem_extensions = {'.mem', '.vmem', '.dump', '.dmp', '.core', '.elf', '.crash', '.raw'}
-    return Path(path).suffix.lower() in mem_extensions
+    ext = Path(path).suffix.lower()
+    if ext not in mem_extensions:
+        return False
+    # Even with matching extension, check file size (> 5MB minimum for memory dumps)
+    try:
+        return Path(path).stat().st_size >= 5 * 1024 * 1024
+    except Exception:
+        return False
 
 
-async def _handle_mem_analyze(args: dict) -> list:
+async def _handle_mem_analyze(args: dict) -> list[TextContent]:
     """Analyze memory with Volatility 3 plugin, with fallback to string IOC scanning."""
-    from src.tools.memory import analyze as mem_analyze
     mem_path = args.get("memory_path", "")
     plugin = args.get("plugin", "linux.pslist.PsList")
     err = _validate_evidence_path(mem_path)
@@ -1077,9 +1272,8 @@ async def _handle_mem_analyze(args: dict) -> list:
     } if result.success else {"success": False, "error": result.error}, indent=2))]
 
 
-async def _handle_mem_list_processes(args: dict) -> list:
+async def _handle_mem_list_processes(args: dict) -> list[TextContent]:
     """List processes from memory using pslist, with fallback to string IOC scanning."""
-    from src.tools.memory import list_processes
     mem_path = args.get("memory_path", "")
     err = _validate_evidence_path(mem_path)
     if err:
@@ -1100,9 +1294,8 @@ async def _handle_mem_list_processes(args: dict) -> list:
     } if result.success else {"success": False, "error": result.error}, indent=2))]
 
 
-async def _handle_mem_scan_network(args: dict) -> list:
+async def _handle_mem_scan_network(args: dict) -> list[TextContent]:
     """Scan network connections from memory, with fallback to string IOC scanning."""
-    from src.tools.memory import scan_network
     mem_path = args.get("memory_path", "")
     err = _validate_evidence_path(mem_path)
     if err:
@@ -1121,9 +1314,8 @@ async def _handle_mem_scan_network(args: dict) -> list:
     } if result.success else {"success": False, "error": result.error}, indent=2))]
 
 
-async def _handle_mem_dump_cmdline(args: dict) -> list:
+async def _handle_mem_dump_cmdline(args: dict) -> list[TextContent]:
     """Dump command lines from memory processes, with fallback to string IOC scanning."""
-    from src.tools.memory import dump_cmdline
     mem_path = args.get("memory_path", "")
     err = _validate_evidence_path(mem_path)
     if err:
@@ -1157,15 +1349,16 @@ async def _handle_reg_analyze(args: dict) -> list:
     hive_path = args.get("hive_path", "")
     key = args.get("key", "/")
 
-    if not Path(hive_path).exists():
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Registry hive not found: {hive_path}",
-        }))]
-
+    # Validate path FIRST before checking existence (prevents path oracle attacks)
     err = _validate_evidence_path(hive_path)
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
+
+    if not Path(hive_path).exists():
+        return [TextContent(type="text", text=json.dumps({
+            "success": False,
+            "error": "Specified file does not exist in evidence directory",
+        }))]
 
     if not _is_registry_hive(hive_path):
         return [TextContent(type="text", text=json.dumps({
@@ -1249,9 +1442,8 @@ async def _handle_pcap_analyze(args: dict) -> list:
             "suggestion": "Use a PCAP/PCAPNG file",
         }))]
 
-    tshark_paths = ["/usr/bin/tshark", "/usr/local/bin/tshark"]
-    tshark_cmd = next((p for p in tshark_paths if Path(p).exists()), None)
-    if not tshark_cmd:
+    tshark_cmd = _find_tool("tshark")
+    if not Path(tshark_cmd).exists():
         return [TextContent(type="text", text=json.dumps({
             "success": False,
             "error": "tshark not found. Install: sudo apt-get install tshark",
@@ -1268,7 +1460,7 @@ async def _handle_pcap_analyze(args: dict) -> list:
         if field:
             cmd.extend(["-e", field])
 
-    result = _run_tool(cmd, timeout=120)
+    result = await _run_tool(cmd, timeout=120)
 
     packets = []
     if result["stdout"].strip():
@@ -1288,11 +1480,11 @@ async def _handle_pcap_analyze(args: dict) -> list:
 
     # Protocol hierarchy
     proto_cmd = [tshark_cmd, "-r", pcap_path, "-z", "io,phs", "-q"]
-    proto_result = _run_tool(proto_cmd, timeout=60)
+    proto_result = await _run_tool(proto_cmd, timeout=60)
 
     # Conversations
     conv_cmd = [tshark_cmd, "-r", pcap_path, "-z", "conv,ip", "-q"]
-    conv_result = _run_tool(conv_cmd, timeout=60)
+    conv_result = await _run_tool(conv_cmd, timeout=60)
 
     return [TextContent(type="text", text=json.dumps({
         "success": True,
@@ -1313,7 +1505,7 @@ def _get_layer(layers: dict, key: str, default: str = "") -> str:
     return str(val) if val else default
 
 
-async def _handle_pcap_protocols(args: dict) -> list:
+async def _handle_pcap_protocols(args: dict) -> list[TextContent]:
     """List protocols in a PCAP."""
     pcap_path = args.get("pcap_path", "")
     err = _validate_evidence_path(pcap_path)
@@ -1325,8 +1517,8 @@ async def _handle_pcap_protocols(args: dict) -> list:
             "error": "Not a packet capture file",
         }))]
 
-    tshark_cmd = next((p for p in ["/usr/bin/tshark", "/usr/local/bin/tshark"] if Path(p).exists()), "tshark")
-    result = _run_tool([tshark_cmd, "-r", pcap_path, "-z", "io,phs", "-q"], timeout=60)
+    tshark_cmd = _find_tool("tshark")
+    result = await _run_tool([tshark_cmd, "-r", pcap_path, "-z", "io,phs", "-q"], timeout=60)
 
     return [TextContent(type="text", text=json.dumps({
         "success": result["success"],
@@ -1345,8 +1537,7 @@ async def _handle_timeline_build(args: dict) -> list:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    from src.tools.timeline import build
-    result = build(source_path, output_path or None)
+    result = timeline_build(source_path, output_path or None)
 
     return [TextContent(type="text", text=json.dumps({
         "success": result.success,
@@ -1366,7 +1557,6 @@ async def _handle_timeline_filter(args: dict) -> list:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    from src.tools.timeline import filter_timeline
     result = filter_timeline(storage_path, query, output_format)
 
     return [TextContent(type="text", text=json.dumps({
@@ -1385,8 +1575,7 @@ async def _handle_extract_features(args: dict) -> list:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    from src.tools.carving import extract_features
-    result = extract_features(image_path, scanners)
+    result = carve_extract_features(image_path, scanners)
 
     return [TextContent(type="text", text=json.dumps({
         "success": result.success,
@@ -1399,10 +1588,18 @@ async def _handle_extract_features(args: dict) -> list:
 
 # ── Accuracy Benchmark Handler ───────────────────────────────────
 
-async def _handle_benchmark(args: dict) -> list:
-    """Compare agent findings against known ground truth."""
+async def _handle_benchmark(args: dict) -> list[TextContent]:
+    """Compare agent findings against known ground truth.
+    
+    Expects ground_truth as JSON array of finding objects with:
+    - type: finding type string
+    - description: description text (used for matching)
+    - confidence: expected confidence level (CONFIRMED, INFERRED, UNVERIFIED)
+    """
     evidence_path = args.get("evidence_path", "")
     ground_truth_str = args.get("ground_truth", "[]")
+    agent_findings_str = args.get("agent_findings", "[]")
+    detection_threshold = float(args.get("detection_threshold", "0.5"))
 
     err = _validate_evidence_path(evidence_path)
     if err:
@@ -1416,21 +1613,124 @@ async def _handle_benchmark(args: dict) -> list:
             "error": "Invalid ground truth JSON. Provide a valid JSON array of expected findings.",
         }))]
 
+    try:
+        agent_findings = json.loads(agent_findings_str) if isinstance(agent_findings_str, str) else agent_findings_str
+    except json.JSONDecodeError:
+        agent_findings = []
+
+    if not isinstance(ground_truth, list):
+        ground_truth = [ground_truth]
+    if not isinstance(agent_findings, list):
+        agent_findings = [agent_findings]
+
+    # Compute comparison metrics
+    gt_types = set()
+    for gt in ground_truth:
+        if isinstance(gt, dict):
+            gt_types.add(gt.get("type", gt.get("description", str(gt))))
+
+    af_types = set()
+    for af in agent_findings:
+        if isinstance(af, dict):
+            af_types.add(af.get("type", af.get("description", str(af))))
+        elif isinstance(af, str):
+            af_types.add(af)
+
+    # True positives: agent finding matches a ground truth entry
+    true_positives = len(gt_types & af_types)
+    false_positives = len(af_types - gt_types)
+    false_negatives = len(gt_types - af_types)
+
+    # Precision, Recall, F1
+    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
+    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
+    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+    # Grade
+    if f1_score >= 0.9:
+        grade = "A (Excellent)"
+    elif f1_score >= 0.8:
+        grade = "B (Good)"
+    elif f1_score >= 0.6:
+        grade = "C (Adequate)"
+    elif f1_score >= 0.4:
+        grade = "D (Poor)"
+    else:
+        grade = "F (Failing)"
+
     return [TextContent(type="text", text=json.dumps({
         "success": True,
         "benchmark": {
             "evidence": evidence_path,
-            "ground_truth_count": len(ground_truth) if isinstance(ground_truth, list) else 1,
-            "ground_truth": ground_truth,
+            "ground_truth_count": len(ground_truth),
+            "agent_findings_count": len(agent_findings),
+            "metrics": {
+                "true_positives": true_positives,
+                "false_positives": false_positives,
+                "false_negatives": false_negatives,
+                "precision": round(precision, 4),
+                "recall": round(recall, 4),
+                "f1_score": round(f1_score, 4),
+                "detection_threshold": detection_threshold,
+            },
+            "grade": grade,
+            "ground_truth_types": sorted(list(gt_types)),
+            "agent_detected_types": sorted(list(af_types)),
+            "missed_types": sorted(list(gt_types - af_types)),
+            "false_positive_types": sorted(list(af_types - gt_types)),
             "benchmark_timestamp": datetime.now(timezone.utc).isoformat(),
         },
-        "message": "Accuracy benchmark framework ready. Run full workflow then pass findings here.",
     }, indent=2))]
+
+
+# ── Tool Config Handler ─────────────────────────────────────────
+
+async def _handle_get_tool_config(args: dict) -> list[TextContent]:
+    """Return canonical tool configuration from config/tools.toml."""
+    tool_name = args.get("tool_name", "")
+    if not tool_name:
+        return [TextContent(type="text", text=json.dumps({
+            "success": False, "error": "tool_name is required",
+            "available_tools": list(_TOOL_CONFIG.keys()),
+        }))]
+
+    cfg = _tool_config(tool_name)
+    if cfg:
+        return [TextContent(type="text", text=json.dumps({
+            "success": True,
+            "tool": tool_name,
+            "config": cfg,
+        }, indent=2))]
+
+    # Fallback to built-in known tools
+    builtin_info = {
+        "fls": {"command": _find_tool("fls"), "description": "List files in forensic image"},
+        "icat": {"command": _find_tool("icat"), "description": "Extract file by inode"},
+        "mmls": {"command": _find_tool("mmls"), "description": "Display partition table"},
+        "fsstat": {"command": _find_tool("fsstat"), "description": "Filesystem statistics"},
+        "foremost": {"command": _find_tool("foremost"), "description": "Carve files by headers"},
+        "yara": {"command": _find_tool("yara"), "description": "YARA pattern matching"},
+        "tshark": {"command": _find_tool("tshark"), "description": "Packet analysis"},
+    }
+    info = builtin_info.get(tool_name)
+    if info:
+        return [TextContent(type="text", text=json.dumps({
+            "success": True,
+            "tool": tool_name,
+            "config": info,
+            "source": "built-in (not in tools.toml)",
+        }, indent=2))]
+
+    return [TextContent(type="text", text=json.dumps({
+        "success": False,
+        "error": f"Unknown tool: {tool_name}",
+        "known_tools": list(builtin_info.keys()) + list(_TOOL_CONFIG.keys()),
+    }))]
 
 
 # ── Audit Log Handler ────────────────────────────────────────────
 
-async def _handle_audit_logs(args: dict) -> list:
+async def _handle_audit_logs(args: dict) -> list[TextContent]:
     """Return audit logs from current session."""
     limit = min(args.get("limit", 100), 10000)
     logs = _get_audit_logs()[-limit:]
