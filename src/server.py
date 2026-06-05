@@ -11,7 +11,6 @@ import atexit
 import json
 import logging
 import os
-import shutil
 import signal
 import subprocess
 import tempfile
@@ -78,7 +77,7 @@ def _load_tool_config() -> dict[str, Any]:
             data = tomllib.load(f)
         tools = data.get("tools", {})
         logger.info("Loaded %d tool definitions from %s", len(tools), _CONFIG_PATH)
-        return tools
+        return tools  # type: ignore[no-any-return]
     except Exception as e:
         logger.warning("Failed to load tool config: %s", e)
         return {}
@@ -92,7 +91,7 @@ def _tool_config(name: str) -> dict[str, Any]:
 
     Returns dict with 'command', 'description', 'args' keys or empty dict.
     """
-    return _TOOL_CONFIG.get(name, {})
+    return _TOOL_CONFIG.get(name, {})  # type: ignore[no-any-return]
 
 
 # ── Concurrency Lock ───────────────────────────────────────────────
@@ -103,7 +102,7 @@ _call_lock = asyncio.Lock()
 _audit_log_path = (
     RESULTS_ROOT / "audit" / f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
 )
-_audit_entries: list[dict] = []
+_audit_entries: list[dict[str, Any]] = []
 
 
 def _sanitize(s: str) -> str:
@@ -121,11 +120,17 @@ def _trunc(s: str, n: int = 200) -> str:
     return s or ""
 
 
-_audit_buffer: list[dict] = []
+_audit_buffer: list[dict[str, Any]] = []
 _AUDIT_FLUSH_INTERVAL = 10  # Flush to disk every N entries
 
 
-def _audit_log(tool: str, arguments: dict, result: dict, duration_ms: int, error: str = None):
+def _audit_log(
+    tool: str,
+    arguments: dict[str, Any],
+    result: dict[str, Any],
+    duration_ms: int,
+    error: Optional[str] = None,
+) -> None:
     """Log a tool execution to in-memory list. Flushes to disk every N entries."""
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -133,7 +138,7 @@ def _audit_log(tool: str, arguments: dict, result: dict, duration_ms: int, error
         "arguments": {k: _trunc(str(v)) for k, v in arguments.items()},
         "success": result.get("success", False),
         "duration_ms": duration_ms,
-        "error": _trunc(str(error)[:500] if error else (result.get("error") or None), 500),
+        "error": _trunc(str(error)[:500] if error else str(result.get("error") or ""), 500),
     }
     _audit_entries.append(entry)
     _audit_buffer.append(entry)
@@ -143,7 +148,7 @@ def _audit_log(tool: str, arguments: dict, result: dict, duration_ms: int, error
         _flush_audit_buffer()
 
 
-def _flush_audit_buffer():
+def _flush_audit_buffer() -> None:
     """Write buffered audit entries to disk."""
     if not _audit_buffer:
         return
@@ -157,12 +162,12 @@ def _flush_audit_buffer():
         logger.warning(f"Failed to write audit log: {e}")
 
 
-def _get_audit_logs() -> list[dict]:
+def _get_audit_logs() -> list[dict[str, Any]]:
     """Return all audit entries for the current session."""
     return _audit_entries
 
 
-def _cleanup():
+def _cleanup() -> None:
     """Graceful cleanup on exit."""
     _flush_audit_buffer()
     total = len(_audit_entries)
@@ -176,7 +181,9 @@ atexit.register(_cleanup)
 # ── Tool Execution ────────────────────────────────────────────────
 
 
-async def _run_tool(cmd: list, timeout: int = 120, stdin_data: str = None) -> dict:
+async def _run_tool(
+    cmd: list[str], timeout: int = 120, stdin_data: Optional[str] = None
+) -> dict[str, Any]:
     """
     Run a command-line tool asynchronously and return structured result.
     Handles timeout, missing tools, and non-zero exits gracefully.
@@ -252,58 +259,42 @@ async def _run_tool(cmd: list, timeout: int = 120, stdin_data: str = None) -> di
 
 _TOOL_CACHE: dict[str, Optional[str]] = {}
 
-TOOL_CANDIDATES: dict[str, list[str]] = {
-    "fls": ["/usr/bin/fls", "/usr/local/bin/fls"],
-    "icat": ["/usr/bin/icat", "/usr/local/bin/icat"],
-    "istat": ["/usr/bin/istat", "/usr/local/bin/istat"],
-    "fsstat": ["/usr/bin/fsstat", "/usr/local/bin/fsstat"],
-    "mmls": ["/usr/bin/mmls", "/usr/local/bin/mmls"],
-    "foremost": ["/usr/bin/foremost", "/usr/local/bin/foremost"],
-    "yara": ["/usr/bin/yara", "/usr/local/bin/yara"],
-    "tshark": ["/usr/bin/tshark", "/usr/local/bin/tshark"],
-    "md5sum": ["/usr/bin/md5sum"],
-    "sha1sum": ["/usr/bin/sha1sum"],
-    "sha256sum": ["/usr/bin/sha256sum"],
-    "sha512sum": ["/usr/bin/sha512sum"],
-}
-
 
 def _find_tool(name: str) -> str:
     """Find a forensic tool by name with caching.
 
+    Delegates to src.tools.tool_resolver.find_tool for the actual
+    resolution (cross-platform PATH + TOOL_LOCATIONS), then layers
+    runtime caching and TOML config override on top.
+
     Checks (in order):
     1. Runtime cache
     2. TOML config file (config/tools.toml) — canonical path
-    3. Known candidate paths
-    4. PATH lookup via shutil.which()
-    5. Fallback to bare name
+    3. src.tools.tool_resolver.find_tool (PATH + TOOL_LOCATIONS)
+    4. Fallback to bare name
 
     Returns full path or bare name if not found.
     """
+    from src.tools.tool_resolver import find_tool as _resolve
+
     if name in _TOOL_CACHE:
-        return _TOOL_CACHE[name]
+        return _TOOL_CACHE[name]  # type: ignore[return-value]
 
     # 1. Check TOML config first
     cfg = _tool_config(name)
     cfg_path = cfg.get("command", "")
     if cfg_path and Path(cfg_path).exists():
         _TOOL_CACHE[name] = cfg_path
-        return cfg_path
+        return cfg_path  # type: ignore[no-any-return]
 
-    # 2. Check known candidates
-    candidates = TOOL_CANDIDATES.get(name, [f"/usr/bin/{name}", f"/usr/local/bin/{name}"])
-    for p in candidates:
-        if Path(p).exists():
-            _TOOL_CACHE[name] = p
-            return p
+    # 2. Delegate to tool_resolver (PATH + TOOL_LOCATIONS)
+    resolved = _resolve(name)
+    if resolved:
+        _TOOL_CACHE[name] = resolved
+        return resolved
 
-    # 3. Try PATH
-    path = shutil.which(name)
-    if path:
-        _TOOL_CACHE[name] = path
-        return path
-
-    # 4. Fallback to bare name (tool may be in PATH when server starts)
+    # 3. Fallback to bare name
+    logger.warning("Tool %s not found in config or PATH — using bare name", name)
     _TOOL_CACHE[name] = name
     return name
 
@@ -372,7 +363,7 @@ server = Server(SERVER_NAME)
 # ── Tool Definitions ──────────────────────────────────────────────
 
 
-@server.list_tools()
+@server.list_tools()  # type: ignore[untyped-decorator, no-untyped-call]
 async def list_tools() -> list[Tool]:
     """Register all 21 forensic tools with typed schemas."""
     return [
@@ -759,8 +750,8 @@ async def list_tools() -> list[Tool]:
 # ── Tool Call Router ──────────────────────────────────────────────
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+@server.call_tool()  # type: ignore[untyped-decorator]
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     """
     Route tool calls to the appropriate handler.
     Protected by asyncio lock to prevent interleaved responses on STDIO transport.
@@ -768,7 +759,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     """
     async with _call_lock:
         # Sanitize arguments for logging (truncate, remove control chars)
-        safe_args = {}
+        safe_args: dict[str, Any] = {}
         for k, v in (arguments or {}).items():
             if isinstance(v, str):
                 # Remove control characters and truncate
@@ -888,7 +879,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 # ── File System Handlers ─────────────────────────────────────────
 
 
-async def _handle_partition_scan(args: dict) -> list[TextContent]:
+async def _handle_partition_scan(args: dict[str, Any]) -> list[TextContent]:
     """Scan partition table using mmls."""
     image_path = args.get("image_path", "")
     err = _validate_evidence_path(image_path)
@@ -955,7 +946,7 @@ async def _handle_partition_scan(args: dict) -> list[TextContent]:
         ]
 
 
-async def _handle_list_files(args: dict) -> list[TextContent]:
+async def _handle_list_files(args: dict[str, Any]) -> list[TextContent]:
     """List files using fls."""
     image_path = args.get("image_path", "")
     offset = args.get("offset", 0)
@@ -1013,7 +1004,7 @@ async def _handle_list_files(args: dict) -> list[TextContent]:
         ]
 
 
-async def _handle_extract_file(args: dict) -> list[TextContent]:
+async def _handle_extract_file(args: dict[str, Any]) -> list[TextContent]:
     """Extract file using icat."""
     image_path = args.get("image_path", "")
     inode = args.get("inode", 0)
@@ -1075,7 +1066,7 @@ async def _handle_extract_file(args: dict) -> list[TextContent]:
         ]
 
 
-async def _handle_file_metadata(args: dict) -> list[TextContent]:
+async def _handle_file_metadata(args: dict[str, Any]) -> list[TextContent]:
     """Get file metadata using istat."""
     image_path = args.get("image_path", "")
     inode = args.get("inode", 0)
@@ -1132,7 +1123,7 @@ async def _handle_file_metadata(args: dict) -> list[TextContent]:
         ]
 
 
-async def _handle_fs_info(args: dict) -> list[TextContent]:
+async def _handle_fs_info(args: dict[str, Any]) -> list[TextContent]:
     """Get filesystem stats using fsstat."""
     image_path = args.get("image_path", "")
     offset = args.get("offset", 0)
@@ -1183,7 +1174,7 @@ async def _handle_fs_info(args: dict) -> list[TextContent]:
 # ── Carving Handlers ────────────────────────────────────────────
 
 
-async def _handle_carve(args: dict) -> list[TextContent]:
+async def _handle_carve(args: dict[str, Any]) -> list[TextContent]:
     """Carve files using foremost."""
     image_path = args.get("image_path", "")
     output_dir = args.get("output_dir", "")
@@ -1288,7 +1279,7 @@ async def _handle_carve(args: dict) -> list[TextContent]:
 # ── YARA Handler ─────────────────────────────────────────────────
 
 
-async def _handle_yara(args: dict) -> list[TextContent]:
+async def _handle_yara(args: dict[str, Any]) -> list[TextContent]:
     """Scan with YARA rules."""
     target = args.get("target", "")
     rules = args.get("rules", "")
@@ -1417,7 +1408,7 @@ async def _handle_yara(args: dict) -> list[TextContent]:
 # ── Hash Handler ────────────────────────────────────────────────
 
 
-async def _handle_hash(args: dict) -> list[TextContent]:
+async def _handle_hash(args: dict[str, Any]) -> list[TextContent]:
     """Compute file hash."""
     file_path = args.get("file_path", "")
     algorithm = args.get("algorithm", "sha256")
@@ -1496,7 +1487,7 @@ async def _handle_hash(args: dict) -> list[TextContent]:
 # ── Evidence List Handler ───────────────────────────────────────
 
 
-async def _handle_list_evidence(args: dict) -> list[TextContent]:
+async def _handle_list_evidence(args: dict[str, Any]) -> list[TextContent]:
     """List available evidence."""
     subdir = args.get("subdir", "")
 
@@ -1637,7 +1628,7 @@ def _is_memory_capture(path: str) -> bool:
         return False
 
 
-async def _handle_mem_analyze(args: dict) -> list[TextContent]:
+async def _handle_mem_analyze(args: dict[str, Any]) -> list[TextContent]:
     """Analyze memory with Volatility 3 plugin, with fallback to string IOC scanning."""
     mem_path = args.get("memory_path", "")
     plugin = args.get("plugin", "linux.pslist.PsList")
@@ -1683,7 +1674,7 @@ async def _handle_mem_analyze(args: dict) -> list[TextContent]:
     ]
 
 
-async def _handle_mem_list_processes(args: dict) -> list[TextContent]:
+async def _handle_mem_list_processes(args: dict[str, Any]) -> list[TextContent]:
     """List processes from memory using pslist, with fallback to string IOC scanning."""
     mem_path = args.get("memory_path", "")
     err = _validate_evidence_path(mem_path)
@@ -1728,7 +1719,7 @@ async def _handle_mem_list_processes(args: dict) -> list[TextContent]:
     ]
 
 
-async def _handle_mem_scan_network(args: dict) -> list[TextContent]:
+async def _handle_mem_scan_network(args: dict[str, Any]) -> list[TextContent]:
     """Scan network connections from memory, with fallback to string IOC scanning."""
     mem_path = args.get("memory_path", "")
     err = _validate_evidence_path(mem_path)
@@ -1767,7 +1758,7 @@ async def _handle_mem_scan_network(args: dict) -> list[TextContent]:
     ]
 
 
-async def _handle_mem_dump_cmdline(args: dict) -> list[TextContent]:
+async def _handle_mem_dump_cmdline(args: dict[str, Any]) -> list[TextContent]:
     """Dump command lines from memory processes, with fallback to string IOC scanning."""
     mem_path = args.get("memory_path", "")
     err = _validate_evidence_path(mem_path)
@@ -1818,7 +1809,7 @@ def _is_registry_hive(path: str) -> bool:
         return False
 
 
-async def _handle_reg_analyze(args: dict) -> list:
+async def _handle_reg_analyze(args: dict[str, Any]) -> list[TextContent]:
     hive_path = args.get("hive_path", "")
     key = args.get("key", "/")
 
@@ -1857,10 +1848,10 @@ async def _handle_reg_analyze(args: dict) -> list:
     try:
         from regipy import RegistryHive
 
-        hive = RegistryHive(hive_path)
+        hive = RegistryHive(hive_path)  # type: ignore[no-untyped-call]
         result_data = []
         try:
-            for entry in hive.recurse_subkeys(key):
+            for entry in hive.recurse_subkeys(key):  # type: ignore[no-untyped-call]
                 entry_data = {
                     "path": entry.path,
                     "timestamp": str(entry.timestamp) if entry.timestamp else None,
@@ -1950,7 +1941,7 @@ def _is_pcap(path: str) -> bool:
         return False
 
 
-async def _handle_pcap_analyze(args: dict) -> list:
+async def _handle_pcap_analyze(args: dict[str, Any]) -> list[TextContent]:
     pcap_path = args.get("pcap_path", "")
     display_filter = args.get("display_filter", "")
     max_packets = args.get("max_packets", 100)
@@ -2048,7 +2039,7 @@ async def _handle_pcap_analyze(args: dict) -> list:
     ]
 
 
-def _get_layer(layers: dict, key: str, default: str = "") -> str:
+def _get_layer(layers: dict[str, Any], key: str, default: str = "") -> str:
     """Safely extract a value from tshark JSON layers."""
     val = layers.get(key, default)
     if isinstance(val, list):
@@ -2056,7 +2047,7 @@ def _get_layer(layers: dict, key: str, default: str = "") -> str:
     return str(val) if val else default
 
 
-async def _handle_pcap_protocols(args: dict) -> list[TextContent]:
+async def _handle_pcap_protocols(args: dict[str, Any]) -> list[TextContent]:
     """List protocols in a PCAP."""
     pcap_path = args.get("pcap_path", "")
     err = _validate_evidence_path(pcap_path)
@@ -2096,7 +2087,7 @@ async def _handle_pcap_protocols(args: dict) -> list[TextContent]:
 # ── Timeline Analysis Handlers ───────────────────────────────────
 
 
-async def _handle_timeline_build(args: dict) -> list:
+async def _handle_timeline_build(args: dict[str, Any]) -> list[TextContent]:
     source_path = args.get("source_path", "")
     output_path = args.get("output_path", "")
 
@@ -2123,7 +2114,7 @@ async def _handle_timeline_build(args: dict) -> list:
     ]
 
 
-async def _handle_timeline_filter(args: dict) -> list:
+async def _handle_timeline_filter(args: dict[str, Any]) -> list[TextContent]:
     storage_path = args.get("storage_path", "")
     query = args.get("query", "")
     output_format = args.get("output_format", "json")
@@ -2150,7 +2141,7 @@ async def _handle_timeline_filter(args: dict) -> list:
     ]
 
 
-async def _handle_extract_features(args: dict) -> list:
+async def _handle_extract_features(args: dict[str, Any]) -> list[TextContent]:
     image_path = args.get("image_path", "")
     scanners = args.get("scanners", "all")
 
@@ -2180,7 +2171,7 @@ async def _handle_extract_features(args: dict) -> list:
 # ── Accuracy Benchmark Handler ───────────────────────────────────
 
 
-async def _handle_benchmark(args: dict) -> list[TextContent]:
+async def _handle_benchmark(args: dict[str, Any]) -> list[TextContent]:
     """Compare agent findings against known ground truth.
 
     Expects ground_truth as JSON array of finding objects with:
@@ -2307,7 +2298,7 @@ async def _handle_benchmark(args: dict) -> list[TextContent]:
 # ── Tool Config Handler ─────────────────────────────────────────
 
 
-async def _handle_get_tool_config(args: dict) -> list[TextContent]:
+async def _handle_get_tool_config(args: dict[str, Any]) -> list[TextContent]:
     """Return canonical tool configuration from config/tools.toml."""
     tool_name = args.get("tool_name", "")
     if not tool_name:
@@ -2384,7 +2375,7 @@ async def _handle_get_tool_config(args: dict) -> list[TextContent]:
 # ── Audit Log Handler ────────────────────────────────────────────
 
 
-async def _handle_audit_logs(args: dict) -> list[TextContent]:
+async def _handle_audit_logs(args: dict[str, Any]) -> list[TextContent]:
     """Return audit logs from current session."""
     limit = min(args.get("limit", 100), 10000)
     logs = _get_audit_logs()[-limit:]
@@ -2409,7 +2400,7 @@ async def _handle_audit_logs(args: dict) -> list[TextContent]:
 # ═══════════════════════════════════════════════════════════════════
 
 
-async def main():
+async def main() -> None:
     """Start the MCP server with graceful shutdown handling."""
     logger.info(f"Starting {SERVER_NAME} v{SERVER_VERSION}")
     logger.info(f"Evidence root: {EVIDENCE_ROOT}")
@@ -2432,7 +2423,7 @@ async def main():
     # Signal handling for graceful shutdown
     shutdown_event = asyncio.Event()
 
-    def _handle_signal(signum, frame):
+    def _handle_signal(signum: int, frame: Optional[Any]) -> None:
         sig_name = signal.Signals(signum).name
         logger.info(f"Received {sig_name}, shutting down gracefully...")
         total = len(_audit_entries)

@@ -4,14 +4,14 @@ Wraps sha256sum, md5sum, sha1sum, and hashdeep.
 """
 
 import subprocess
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 
 class HashResult(BaseModel):
     success: bool = True
-    data: list = []
+    data: list[dict[str, Any]] = []
     error: Optional[str] = None
     algorithm: str = "sha256"
     hash_value: str = ""

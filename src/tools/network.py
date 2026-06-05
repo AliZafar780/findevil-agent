@@ -5,14 +5,14 @@ Wraps tshark for PCAP analysis.
 
 import json
 import subprocess
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 
 class NetworkResult(BaseModel):
     success: bool = True
-    data: list = []
+    data: list[dict[str, Any]] = []
     error: Optional[str] = None
     packet_count: int = 0
 

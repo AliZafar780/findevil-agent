@@ -5,14 +5,14 @@ Wraps foremost, bulk_extractor, and binwalk.
 
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 
 class CarvingResult(BaseModel):
     success: bool = True
-    data: list = []
+    data: list[dict[str, Any]] = []
     error: Optional[str] = None
     file_count: int = 0
     output_dir: Optional[str] = None

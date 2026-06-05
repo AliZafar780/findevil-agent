@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from src.agent.output_parser import extract_json_from_text
 
@@ -19,7 +19,8 @@ logger = logging.getLogger("findevil-groq")
 # Default Groq model (fast + capable)
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 # Fallback models if primary is unavailable
-FALLBACK_MODELS = ["llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
+# Validated against Groq's current model lineup (June 2026)
+FALLBACK_MODELS = ["llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
 
 SYSTEM_PROMPT_DFIR = """You are a Senior DFIR (Digital Forensics & Incident Response) Analyst with 20 years of experience. You have analyzed thousands of compromised systems.
 
@@ -101,7 +102,7 @@ class GroqDFIRClient:
         self.api_key = api_key or os.environ.get("GROQ_API_KEY", "")
         self.available = bool(self.api_key)
         self.model = model or DEFAULT_MODEL
-        self.conversation_history = []
+        self.conversation_history: list[dict[str, Any]] = []
         self.system_prompt = SYSTEM_PROMPT_DFIR
 
         # Token and cost tracking
@@ -130,7 +131,7 @@ class GroqDFIRClient:
                 "Set GROQ_API_KEY for LLM-powered analysis."
             )
 
-    def reset_conversation(self):
+    def reset_conversation(self) -> None:
         """Reset the conversation history for a new case."""
         self.conversation_history = []
         self.total_prompt_tokens = 0
@@ -139,7 +140,7 @@ class GroqDFIRClient:
         self.total_cost = 0.0
         self.api_calls = 0
 
-    def get_usage_summary(self) -> dict:
+    def get_usage_summary(self) -> dict[str, Any]:
         """Return current token and cost usage summary."""
         return {
             "available": self.available,
@@ -163,7 +164,7 @@ class GroqDFIRClient:
             return False
         return True
 
-    def _call_groq(self, messages: list, temperature: float = 0.1) -> str:
+    def _call_groq(self, messages: list[dict[str, Any]], temperature: float = 0.1) -> str:
         """Make a call to Groq with fallback models and token tracking.
 
         Returns empty string if client is unavailable or all models fail.
@@ -180,7 +181,7 @@ class GroqDFIRClient:
             try:
                 response = self.client.chat.completions.create(
                     model=model,
-                    messages=messages,
+                    messages=messages,  # type: ignore[arg-type]
                     temperature=temperature,
                     max_tokens=MAX_TOKENS_PER_CALL,
                 )
@@ -213,7 +214,7 @@ class GroqDFIRClient:
         logger.error("All Groq models failed. Check API key and quota.")
         return ""
 
-    def analyze_findings(self, tool_results: list, task: str) -> str:
+    def analyze_findings(self, tool_results: list[dict[str, Any]], task: str) -> str:
         """Have the LLM analyze tool results and provide reasoning."""
         messages = [
             {"role": "system", "content": self.system_prompt},
@@ -228,7 +229,9 @@ class GroqDFIRClient:
         ]
         return self._call_groq(messages)
 
-    def decide_next_tools(self, phase: str, last_results: dict, errors: list) -> list:
+    def decide_next_tools(
+        self, phase: str, last_results: dict[str, Any], errors: list[str]
+    ) -> list[str]:
         """Have the LLM decide which tools to run next based on results.
 
         Returns empty list if client is unavailable — caller should fall back
@@ -271,12 +274,14 @@ class GroqDFIRClient:
                     return [t.get("name", t) if isinstance(t, dict) else t for t in tools]
             # Also try direct parse as fallback
             parsed = json.loads(result)
-            return parsed.get("tools", [])
+            return parsed.get("tools", [])  # type: ignore[no-any-return]
         except (json.JSONDecodeError, TypeError, AttributeError):
             logger.warning("Failed to parse LLM tool decision: %s", result[:200])
             return []
 
-    def generate_report(self, all_findings: list, tool_calls: list) -> str:
+    def generate_report(
+        self, all_findings: list[dict[str, Any]], tool_calls: list[dict[str, Any]]
+    ) -> str:
         """Generate a final structured report from all findings.
 
         Returns JSON string. Falls back to narrative report if LLM unavailable.
@@ -322,7 +327,7 @@ class GroqDFIRClient:
 
         return _generate_narrative_report(all_findings, tool_calls)
 
-    def self_correct(self, error: str, failed_tool: str, context: dict) -> str:
+    def self_correct(self, error: str, failed_tool: str, context: dict[str, Any]) -> str:
         """Have the LLM suggest recovery from a tool failure.
 
         Returns empty string if unavailable.
@@ -344,7 +349,7 @@ class GroqDFIRClient:
         ]
         return self._call_groq(messages, temperature=0.3)
 
-    def generate_demo_report(self, tool_results: list) -> dict:
+    def generate_demo_report(self, tool_results: list[dict[str, Any]]) -> dict[str, Any]:
         """Generate a complete submission-ready demo report."""
         if not self.available:
             return {"report": _generate_narrative_report([], [])}
@@ -369,12 +374,14 @@ class GroqDFIRClient:
         if not result:
             return {"report": _generate_narrative_report([], [])}
         try:
-            return json.loads(result)
+            return json.loads(result)  # type: ignore[no-any-return]
         except json.JSONDecodeError:
             return {"report": result}
 
 
-def _generate_narrative_report(all_findings: list, tool_calls: list) -> str:
+def _generate_narrative_report(
+    all_findings: list[dict[str, Any]], tool_calls: list[dict[str, Any]]
+) -> str:
     """Generate a human-readable investigation narrative (no LLM needed).
 
     This is the fallback report generator used when Groq is unavailable.

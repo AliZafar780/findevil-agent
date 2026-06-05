@@ -4,7 +4,7 @@ Structured output extraction from tool results.
 
 import json
 import re
-from typing import Optional
+from typing import Any, Optional
 
 
 def _extract_balanced_braces(text: str) -> list[str]:
@@ -26,11 +26,11 @@ def _extract_balanced_braces(text: str) -> list[str]:
     return results
 
 
-def extract_json_from_text(text: str) -> Optional[dict]:
+def extract_json_from_text(text: str) -> Optional[dict[str, Any]]:
     """Extract JSON object from text that may contain markdown or other content."""
     # Try direct parse
     try:
-        return json.loads(text)
+        return json.loads(text)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         pass
 
@@ -40,12 +40,12 @@ def extract_json_from_text(text: str) -> Optional[dict]:
         matches = re.findall(code_block_pattern, text, re.DOTALL)
         for m in matches:
             try:
-                return json.loads(m.strip())
+                return json.loads(m.strip())  # type: ignore[no-any-return]
             except json.JSONDecodeError:
                 # Try extracting balanced braces from within the block
                 for candidate in _extract_balanced_braces(m):
                     try:
-                        return json.loads(candidate)
+                        return json.loads(candidate)  # type: ignore[no-any-return]
                     except json.JSONDecodeError:
                         continue
     except Exception:
@@ -54,14 +54,14 @@ def extract_json_from_text(text: str) -> Optional[dict]:
     # Try extracting balanced braces from the full text (handles nested objects)
     for candidate in _extract_balanced_braces(text):
         try:
-            return json.loads(candidate)
+            return json.loads(candidate)  # type: ignore[no-any-return]
         except json.JSONDecodeError:
             continue
 
     return None
 
 
-def parse_tool_decision(text: str) -> list:
+def parse_tool_decision(text: str) -> list[str]:
     """Parse LLM tool decision output into a list of tool names.
 
     Only returns tool names when:
@@ -135,7 +135,7 @@ def parse_tool_decision(text: str) -> list:
     return list(set(found))
 
 
-def parse_report(text: str) -> dict:
+def parse_report(text: str) -> dict[str, Any]:
     """Parse the final report from LLM output."""
     parsed = extract_json_from_text(text)
     if parsed:

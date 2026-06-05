@@ -6,14 +6,14 @@ Wraps log2timeline/plaso via subprocess for forensic timeline generation.
 import json
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 
 class TimelineResult(BaseModel):
     success: bool = True
-    data: list = []
+    data: list[dict[str, Any]] = []
     error: Optional[str] = None
     storage_path: Optional[str] = None
     event_count: int = 0

@@ -20,6 +20,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Optional
 
 try:
     from rich import box
@@ -63,7 +64,7 @@ def _generate_logo() -> str:
         except Exception:
             result = None
         if result and result.strip():
-            return result.rstrip("\n")
+            return result.rstrip("\n")  # type: ignore[no-any-return]
     # Professional built-in ASCII art — DFIR-themed
     return r"""                           ;
      Et                          ED.
@@ -125,14 +126,14 @@ def _s(s: str, n: int = 500) -> str:
     return safe[:n] + "..." if len(safe) > n else safe
 
 
-def _console():
+def _console() -> Optional[Any]:
     """Get a Rich Console if available, else a simple print wrapper."""
     if RICH_AVAILABLE:
         return Console()
     return None
 
 
-def _print(*args, **kwargs):
+def _print(*args: Any, **kwargs: Any) -> None:
     """Print with optional rich formatting."""
     console = _console()
     if console:
@@ -141,7 +142,7 @@ def _print(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def main():
+def main() -> None:
     """Main CLI entry point with ASCII logo and rich formatting."""
     parser = argparse.ArgumentParser(
         prog="findevil",
@@ -290,7 +291,7 @@ def _get_version() -> str:
         return "2.1.1"
 
 
-def _print_logo():
+def _print_logo() -> None:
     """Print the ASCII logo with rich gradient/color effects."""
     if RICH_AVAILABLE:
         # Create a gradient-like effect using layered styles
@@ -315,7 +316,7 @@ def _print_logo():
         print(f"{ANSI_DIM}{'─' * 60}{ANSI_RESET}")
 
 
-def _set_environment(args):
+def _set_environment(args: argparse.Namespace) -> None:
     """Set environment variables from args or defaults."""
     os.environ.setdefault("EVIDENCE_ROOT", args.evidence_root or "/evidence")
     os.environ.setdefault("RESULTS_ROOT", args.results_root or "/results")
@@ -328,7 +329,7 @@ def _set_environment(args):
 # ═══════════════════════════════════════════════════════════════════
 
 
-async def _cmd_investigate(args):
+async def _cmd_investigate(args: argparse.Namespace) -> None:
     """Run full automated investigation with rich progress display."""
     evidence_path = args.evidence
     output_dir = args.output or os.path.join(
@@ -373,7 +374,7 @@ async def _cmd_investigate(args):
 
         # Initialize Groq if key available
         groq_key = os.environ.get("GROQ_API_KEY", "")
-        groq = None
+        groq: Optional[GroqDFIRClient] = None
         if groq_key and not args.no_ai:
             try:
                 groq = GroqDFIRClient(api_key=groq_key, model=args.groq_model)
@@ -457,7 +458,7 @@ async def _cmd_investigate(args):
         all_findings = workflow.state.findings
 
         # Generate AI report
-        report = None
+        report: Optional[dict[str, Any]] = None
         if groq and all_findings:
             _print("\n[bold]── Generating AI Report ───[/bold]")
             try:
@@ -523,7 +524,7 @@ async def _cmd_investigate(args):
         await client.stop()
 
 
-async def _cmd_serve():
+async def _cmd_serve() -> None:
     """Start MCP server."""
     from src.server import main as server_main
 
@@ -535,7 +536,7 @@ async def _cmd_serve():
     await server_main()
 
 
-async def _cmd_tools():
+async def _cmd_tools() -> None:
     """List all 21 forensic tools with rich formatting."""
     # Standalone tool list (no MCP server needed)
     tools = [
@@ -580,7 +581,7 @@ async def _cmd_tools():
             print()
 
 
-async def _cmd_tool(args):
+async def _cmd_tool(args: argparse.Namespace) -> None:
     """Run a single forensic tool."""
     from src.agent.loop import SimpleMCPClient
 
@@ -652,7 +653,7 @@ async def _cmd_tool(args):
         await client.stop()
 
 
-def _cmd_create_test_image(args):
+def _cmd_create_test_image(args: argparse.Namespace) -> None:
     """Create a forensic test image with known artifacts."""
     output = args.output
     size_mb = args.size
@@ -724,7 +725,7 @@ def _cmd_create_test_image(args):
     _print("   mimikatz_log.txt (credential dump), simulated SAM hive")
 
 
-def _cmd_ascii_arch():
+def _cmd_ascii_arch() -> None:
     """Display ASCII architecture diagram."""
     arch = r"""
   ╔═══════════════════════════════════════════════════════════════╗
@@ -766,7 +767,7 @@ def _cmd_ascii_arch():
         print(f"{ANSI_CYAN}{arch}{ANSI_RESET}")
 
 
-async def _cmd_check():
+async def _cmd_check() -> None:
     """Check environment with rich formatting."""
     if RICH_AVAILABLE:
         _print(

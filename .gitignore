@@ -39,3 +39,4 @@ Thumbs.db
 # Generated files
 *.plaso
 *.jsonl
+.coverage

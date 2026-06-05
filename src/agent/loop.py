@@ -20,23 +20,23 @@ logger = logging.getLogger("findevil-agent")
 class ToolCall:
     """Record of a single tool execution."""
 
-    def __init__(self, tool: str, arguments: dict, iteration: int):
+    def __init__(self, tool: str, arguments: dict[str, Any], iteration: int) -> None:
         self.tool = tool
         self.arguments = arguments
         self.iteration = iteration
         self.timestamp = datetime.now(timezone.utc).isoformat()
         self.success = False
-        self.result = None
-        self.error = None
+        self.result: Any = None
+        self.error: Optional[str] = None
         self.duration_ms = 0
         self.start_time = time.time()
 
-    def complete(self, result: Any, duration: float):
+    def complete(self, result: Any, duration: float) -> None:
         self.result = result
         self.duration = duration
         self.duration_ms = int(duration * 1000)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp,
             "iteration": self.iteration,
@@ -51,18 +51,19 @@ class ToolCall:
 class AgentState:
     """Track agent execution state and support self-correction."""
 
-    def __init__(self, max_iterations: int = 30):
+    def __init__(self, max_iterations: int = 30) -> None:
         self.iteration = 0
         self.max_iterations = max_iterations
         self.tool_calls: list[ToolCall] = []
-        self.findings: list[dict] = []
+        self.findings: list[dict[str, Any]] = []
         self.consecutive_failures = 0
         self.start_time = time.time()
         self.status = "running"
-        self.last_tool_results = {}
-        self.errors = []
+        self.last_tool_results: dict[str, Any] = {}
+        self.errors: list[str] = []
 
     def should_abort(self) -> tuple[bool, str]:
+        """Check if the agent should abort based on iteration count, failures, or elapsed time."""
         if self.iteration >= self.max_iterations:
             return True, f"Max iterations ({self.max_iterations}) reached"
         if self.consecutive_failures >= 5:
@@ -72,7 +73,7 @@ class AgentState:
             return True, f"Time limit exceeded ({int(elapsed)}s)"
         return False, ""
 
-    def record_call(self, tool_call: ToolCall):
+    def record_call(self, tool_call: ToolCall) -> None:
         self.tool_calls.append(tool_call)
         if tool_call.success:
             self.consecutive_failures = 0
@@ -81,10 +82,10 @@ class AgentState:
             self.consecutive_failures += 1
             self.errors.append(f"{tool_call.tool}: {tool_call.error}")
 
-    def add_finding(self, finding: dict):
+    def add_finding(self, finding: dict[str, Any]) -> None:
         self.findings.append(finding)
 
-    def get_summary(self) -> dict:
+    def get_summary(self) -> dict[str, Any]:
         total = len(self.tool_calls)
         successful = sum(1 for t in self.tool_calls if t.success)
         return {
@@ -155,8 +156,9 @@ class DFIRWorkflow:
         self.current_phase = "initial_triage"
         self._detected_offset = 0
         self._evidence_path = ""
+        self.duration: float = 0.0
 
-    async def run(self, task: str, evidence_path: str) -> dict:
+    async def run(self, task: str, evidence_path: str) -> dict[str, Any]:
         """Execute the complete DFIR workflow across all phases."""
         logger.info(f"Starting DFIR workflow: {task[:200]}" if task else "Starting DFIR workflow")
         logger.info(f"Evidence: {evidence_path[:200]}" if evidence_path else "Evidence: (none)")
@@ -257,7 +259,7 @@ class DFIRWorkflow:
         report = await self._generate_report()
         return self._build_result(report)
 
-    async def _execute_phase(self):
+    async def _execute_phase(self) -> None:
         """Execute a single analysis phase."""
         # Auto-detect partition offset
         if (
@@ -323,7 +325,7 @@ class DFIRWorkflow:
 
             self.state.record_call(tool_call)
 
-    async def _get_phase_tools(self) -> list:
+    async def _get_phase_tools(self) -> list[str]:
         """Get tools for current phase, using LLM when possible, falling back to tool_selector."""
         defaults = self.DEFAULT_TOOLS.get(self.current_phase, [])
         tool_selector_tools = suggest_next_tools(self.current_phase)
@@ -376,13 +378,13 @@ class DFIRWorkflow:
                         logger.info(
                             f"Auto-detected partition offset: {p.get('start', 0)} (slot {slot})"
                         )
-                        return p.get("start", 0)
+                        return p.get("start", 0)  # type: ignore[no-any-return]
             return 0
         except Exception as e:
             logger.warning(f"Failed to detect partition offset: {e}")
             return 0
 
-    def _build_args(self, tool_name: str) -> dict:
+    def _build_args(self, tool_name: str) -> dict[str, Any]:
         """Build appropriate arguments for each tool."""
         ep = self._evidence_path
         off = self._detected_offset
@@ -413,9 +415,9 @@ class DFIRWorkflow:
             "pcap_list_protocols": {"pcap_path": ep},
             "get_audit_logs": {"limit": 50},
         }
-        return arg_map.get(tool_name, {})
+        return arg_map.get(tool_name, {})  # type: ignore[return-value]
 
-    async def _try_fallback(self, tool_name: str):
+    async def _try_fallback(self, tool_name: str) -> None:
         """Try a fallback tool when primary fails."""
         self.state.iteration += 1
         tool_call = ToolCall(tool_name, {}, self.state.iteration)
@@ -443,7 +445,7 @@ class DFIRWorkflow:
     # Scoring logic: each finding is evaluated on data quality + tool reliability.
     # Higher weight = more likely CONFIRMED. Scoring based on concrete output data.
 
-    _CONFIDENCE_WEIGHTS: dict[str, dict] = {
+    _CONFIDENCE_WEIGHTS: dict[str, dict[str, Any]] = {
         # Tool: {field_to_check, min_meaningful_value, threshold_for_confirmed}
         "fs_partition_scan": {"field": "partition_count", "min_meaningful": 0, "confirmed_at": 1},
         "fs_list_files": {"field": "file_count", "min_meaningful": 0, "confirmed_at": 2},
@@ -478,7 +480,7 @@ class DFIRWorkflow:
         "get_audit_logs": {"field": "total_entries", "min_meaningful": 1, "confirmed_at": 1},
     }
 
-    def _assess_confidence(self, tool_name: str, result: dict) -> str:
+    def _assess_confidence(self, tool_name: str, result: dict[str, Any]) -> str:
         """Assess finding confidence based on data quality and tool reliability.
 
         CONFIRMED: Tool returned meaningful, verifiable data.
@@ -496,6 +498,7 @@ class DFIRWorkflow:
         raw_value = result.get(field)
 
         # Get the "value" to score
+        value: int = 0
         if field == "data":
             value = (
                 len(raw_value) if isinstance(raw_value, (list, dict)) else (1 if raw_value else 0)
@@ -503,7 +506,9 @@ class DFIRWorkflow:
         elif field in ("fsstat_output", "protocols", "storage_path"):
             value = len(str(raw_value)) if raw_value else 0
         else:
-            value = raw_value if isinstance(raw_value, (int, float)) else (1 if raw_value else 0)
+            value = (
+                int(raw_value) if isinstance(raw_value, (int, float)) else (1 if raw_value else 0)
+            )
 
         min_val = weights["min_meaningful"]
         confirmed_at = weights["confirmed_at"]
@@ -515,9 +520,9 @@ class DFIRWorkflow:
         else:
             return "UNVERIFIED"
 
-    def _extract_findings(self, tool_name: str, result: dict):
+    def _extract_findings(self, tool_name: str, result: dict[str, Any]) -> None:
         """Extract structured findings from tool output with proper confidence scoring."""
-        mapping = {
+        mapping: dict[str, tuple[str, Any]] = {
             "fs_partition_scan": (
                 "partition_table",
                 lambda r: f"Found {r.get('partition_count', 0)} partitions",
@@ -639,7 +644,7 @@ class DFIRWorkflow:
 
         return "\n".join(lines)
 
-    def _build_result(self, report: str) -> dict:
+    def _build_result(self, report: str) -> dict[str, Any]:
         return {
             "success": self.state.status in ("running", "completed"),
             "status": self.state.status,
@@ -653,11 +658,11 @@ class DFIRWorkflow:
 class SimpleMCPClient:
     """Minimal MCP client for testing the agent loop against the MCP server."""
 
-    def __init__(self, server_module: str = "src.server"):
+    def __init__(self, server_module: str = "src.server") -> None:
         self.server_module = server_module
-        self.proc = None
+        self.proc: Optional[asyncio.subprocess.Process] = None
 
-    async def start(self):
+    async def start(self) -> bytes:
         """Start the MCP server as a subprocess."""
         import sys
 
@@ -685,12 +690,12 @@ class SimpleMCPClient:
             )
             + "\n"
         )
-        self.proc.stdin.write(init.encode())
-        await self.proc.stdin.drain()
-        line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=10)
+        self.proc.stdin.write(init.encode())  # type: ignore[union-attr]
+        await self.proc.stdin.drain()  # type: ignore[union-attr]
+        line: bytes = await asyncio.wait_for(self.proc.stdout.readline(), timeout=10)  # type: ignore[union-attr]
         return line
 
-    async def call_tool(self, name: str, arguments: dict) -> dict:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Call an MCP tool and return the parsed result."""
         msg = (
             json.dumps(
@@ -703,11 +708,11 @@ class SimpleMCPClient:
             )
             + "\n"
         )
-        self.proc.stdin.write(msg.encode())
-        await self.proc.stdin.drain()
+        self.proc.stdin.write(msg.encode())  # type: ignore[union-attr]
+        await self.proc.stdin.drain()  # type: ignore[union-attr]
 
         try:
-            line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=120)
+            line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=120)  # type: ignore[union-attr]
         except asyncio.TimeoutError:
             return {"success": False, "error": f"Tool {name} timed out (120s)"}
 
@@ -719,7 +724,7 @@ class SimpleMCPClient:
         except json.JSONDecodeError:
             # Try reading stderr for error info
             try:
-                stderr_output = await asyncio.wait_for(self.proc.stderr.readline(), timeout=2)
+                stderr_output = await asyncio.wait_for(self.proc.stderr.readline(), timeout=2)  # type: ignore[union-attr]
                 error_detail = (
                     stderr_output.decode()
                     if isinstance(stderr_output, bytes)
@@ -759,7 +764,7 @@ class SimpleMCPClient:
             }
         return {"success": False, "error": "Unknown MCP response format"}
 
-    async def list_tools(self) -> list:
+    async def list_tools(self) -> list[dict[str, Any]]:
         """List available MCP tools."""
         msg = (
             json.dumps(
@@ -772,13 +777,13 @@ class SimpleMCPClient:
             )
             + "\n"
         )
-        self.proc.stdin.write(msg.encode())
-        await self.proc.stdin.drain()
-        line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=10)
+        self.proc.stdin.write(msg.encode())  # type: ignore[union-attr]
+        await self.proc.stdin.drain()  # type: ignore[union-attr]
+        line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=10)  # type: ignore[union-attr]
         resp = json.loads(line)
-        return resp.get("result", {}).get("tools", [])
+        return resp.get("result", {}).get("tools", [])  # type: ignore[no-any-return]
 
-    async def stop(self):
+    async def stop(self) -> None:
         if self.proc:
             self.proc.kill()
             await self.proc.wait()

@@ -3,6 +3,8 @@ Intelligent tool selection for DFIR analysis.
 Helps the agent choose the right tool for each situation.
 """
 
+from typing import Any, Optional
+
 TOOL_REGISTRY = {
     "initial_triage": [
         {
@@ -87,7 +89,9 @@ TOOL_REGISTRY = {
 }
 
 
-def suggest_next_tools(phase: str, previous_results: dict = None) -> list:
+def suggest_next_tools(
+    phase: str, previous_results: Optional[dict[str, Any]] = None
+) -> list[dict[str, Any]]:
     """Suggest appropriate tools based on analysis phase."""
     tools = TOOL_REGISTRY.get(phase, [])
     return sorted(tools, key=lambda t: t["priority"])
@@ -121,7 +125,7 @@ def get_tool_for_artifact(artifact_type: str) -> str:
     return artifact_tools.get(artifact_type, "fs_partition_scan")
 
 
-def get_fallback_chain(tool: str) -> list:
+def get_fallback_chain(tool: str) -> list[str]:
     """Get alternative tools when the primary tool fails."""
     fallbacks = {
         "fs_list_files": ["carve_files"],

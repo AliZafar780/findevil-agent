@@ -36,11 +36,11 @@ if __name__ == "__main__":
         # Start MCP server directly (no CLI overhead)
         import asyncio
 
-        from .server import main
+        from .server import main as server_main
 
-        asyncio.run(main())
+        asyncio.run(server_main())
     else:
         # Route through CLI
-        from .cli import main
+        from .cli import main as cli_main
 
-        main()
+        cli_main()

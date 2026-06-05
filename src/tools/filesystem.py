@@ -5,7 +5,7 @@ Wraps TSK (The Sleuth Kit) commands via subprocess.
 
 import subprocess
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -49,7 +49,7 @@ class FsStats(BaseModel):
 
 class FileSystemResult(BaseModel):
     success: bool = True
-    data: list = []
+    data: list[dict[str, Any]] = []
     error: Optional[str] = None
 
 
@@ -112,7 +112,7 @@ def extract_file(
         args.extend([image_path, str(inode)])
         data = _run_tsk("icat", args)
 
-        result_data = {"inode": inode, "size": len(data)}
+        result_data: dict[str, Any] = {"inode": inode, "size": len(data)}
         if output_path:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, "wb") as f:
@@ -194,6 +194,6 @@ def extract_strings(image_path: str, min_length: int = 6) -> FileSystemResult:
             timeout=120,
         )
         strings_list = [s for s in result.stdout.strip().split("\n") if s.strip()]
-        return FileSystemResult(data=strings_list[:5000])
+        return FileSystemResult(data=[{"string": s} for s in strings_list[:5000]])
     except Exception as e:
         return FileSystemResult(success=False, error=str(e))

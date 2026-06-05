@@ -3,7 +3,7 @@ Shared Pydantic data models for forensic analysis results.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -32,7 +32,7 @@ class Finding(BaseModel):
     confidence: str = Field(description="CONFIRMED, INFERRED, or UNVERIFIED")
     artifact_type: str
     tool_used: str
-    tool_arguments: dict = {}
+    tool_arguments: dict[str, Any] = {}
     raw_output_snippet: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     iteration: int = 0
@@ -43,7 +43,7 @@ class ToolExecution(BaseModel):
     """Record of a single tool execution for audit trail."""
 
     tool: str
-    arguments: dict = {}
+    arguments: dict[str, Any] = {}
     success: bool
     duration_ms: int
     error: Optional[str] = None

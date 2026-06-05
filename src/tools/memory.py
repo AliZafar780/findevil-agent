@@ -6,7 +6,7 @@ Wraps Volatility 3 via subprocess with intelligent fallback to string scanning.
 import json
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 class MemoryResult(BaseModel):
     success: bool = True
     plugin: str = ""
-    data: list = []
+    data: list[dict[str, Any]] = []
     error: Optional[str] = None
 
 
@@ -27,7 +27,7 @@ VOL_CANDIDATES = [
 ]
 
 
-def _find_vol():
+def _find_vol() -> Optional[str]:
     """Find vol.py in candidate locations."""
     for p in VOL_CANDIDATES:
         if Path(p).exists():
@@ -123,7 +123,7 @@ MEMORY_IOC_PATTERNS = {
 }
 
 
-def _scan_strings(memory_path: str, max_size_mb: int = 100) -> list:
+def _scan_strings(memory_path: str, max_size_mb: int = 100) -> list[dict[str, Any]]:
     """
     Scan a memory dump for known IOC strings.
     Falls back to intelligent string-based scanning.

@@ -4,14 +4,14 @@ Wraps regipy and reglookup for registry hive analysis.
 """
 
 import subprocess
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 
 class RegistryResult(BaseModel):
     success: bool = True
-    data: list = []
+    data: list[dict[str, Any]] = []
     error: Optional[str] = None
     key_count: int = 0
 
@@ -21,11 +21,11 @@ def query(hive_path: str, key: str = "/", recursive: bool = False) -> RegistryRe
     try:
         from regipy import RegistryHive
 
-        hive = RegistryHive(hive_path)
+        hive = RegistryHive(hive_path)  # type: ignore[no-untyped-call]
         result_data = []
 
         if recursive:
-            for entry in hive.recurse_subkeys(key):
+            for entry in hive.recurse_subkeys(key):  # type: ignore[no-untyped-call]
                 entry_data = {
                     "path": entry.path,
                     "timestamp": str(entry.timestamp) if entry.timestamp else None,
@@ -47,7 +47,7 @@ def query(hive_path: str, key: str = "/", recursive: bool = False) -> RegistryRe
         else:
             # Just get the subkeys at the given level
             try:
-                for entry in hive.get_key(key).iter_subkeys():
+                for entry in hive.get_key(key).iter_subkeys():  # type: ignore[no-untyped-call]
                     result_data.append(
                         {
                             "path": entry.path,
@@ -56,7 +56,7 @@ def query(hive_path: str, key: str = "/", recursive: bool = False) -> RegistryRe
                     )
             except Exception:
                 # Try direct key lookup
-                result_data.append({"path": key, "info": str(hive.get_key(key))})
+                result_data.append({"path": key, "info": str(hive.get_key(key))})  # type: ignore[no-untyped-call]
 
         return RegistryResult(
             success=True,
@@ -104,10 +104,10 @@ def analyze_hive_summary(hive_path: str) -> RegistryResult:
     try:
         from regipy import RegistryHive
 
-        hive = RegistryHive(hive_path)
+        hive = RegistryHive(hive_path)  # type: ignore[no-untyped-call]
 
         top_keys = []
-        for key in hive.root.iter_subkeys():
+        for key in hive.root.iter_subkeys():  # type: ignore[no-untyped-call]
             try:
                 top_keys.append(
                     {

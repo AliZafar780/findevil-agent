@@ -7,14 +7,14 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 
 class PatternResult(BaseModel):
     success: bool = True
-    data: list = []
+    data: list[dict[str, Any]] = []
     error: Optional[str] = None
     match_count: int = 0
 
@@ -154,7 +154,7 @@ def scan_with_builtin_rules(target_path: str) -> PatternResult:
     return scan_yara(target_path, rules_content=BUILTIN_RULES)
 
 
-def search_text_patterns(file_path: str, patterns: list) -> PatternResult:
+def search_text_patterns(file_path: str, patterns: list[str]) -> PatternResult:
     """Search for text patterns in a file using grep-like matching."""
     try:
         matches = []
