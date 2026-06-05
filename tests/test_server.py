@@ -142,7 +142,7 @@ class TestMCPServer:
             r = await self._call_tool(client, "fs_partition_scan", {"image_path": "/etc/passwd"})
             assert r["success"] is False
             err = r.get("error", "").lower()
-            assert "access denied" in err or "outside evidence" in err or "not exist" in err
+            assert any(w in err for w in ["access denied", "outside evidence", "not exist", "path validation"]), f"Expected security error, got: {err}"
 
         await self._run_server_test(run)
 

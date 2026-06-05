@@ -97,7 +97,7 @@ class TestPathTraversal:
         assert not r.get("success"), f"Path should be blocked: {path}"
         err = (r.get("error") or "").lower()
         assert any(
-            w in err for w in ["access denied", "not exist", "outside evidence"]
+            w in err for w in ["access denied", "not exist", "outside evidence", "path validation"]
         ), f"Expected security error, got: {err}"
 
     @pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
