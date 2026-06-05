@@ -1,7 +1,7 @@
 [project]
 name = "findevil-agent"
-version = "2.1.1"
-description = "Autonomous DFIR analysis agent — 23 MCP forensic tools, Groq AI integration, deterministic mode (no API key), 52 passing tests, CI/CD, Docker. Covers memory/disk/registry/network forensics."
+version = "2.1.3"
+description = "Autonomous DFIR analysis agent — 22 MCP forensic tools, Groq AI integration, deterministic mode (no API key), 107 passing tests, CI/CD, Docker. Covers memory/disk/registry/network forensics."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -44,6 +44,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+core = [
+    "volatility3>=2.0.0",
+    "regipy>=6.0.0",
+]
+full = [
+    "findevil-agent[core]",
+    # Heavy deps (optional — not installed by default):
+    # torch, pyarrow, plotly, jupyter, h5py, lxml
+]
+ai = [
+    # Future: deep learning model dependencies
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.23.0",
@@ -53,12 +65,8 @@ dev = [
     "coverage>=7.0",
     "pre-commit>=3.0.0",
 ]
-full = [
-    "volatility3>=2.0.0",
-    "regipy>=6.0.0",
-]
 all = [
-    "findevil-agent[dev,full]",
+    "findevil-agent[dev,core]",
 ]
 
 [project.urls]

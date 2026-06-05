@@ -23,7 +23,7 @@
     AI-Powered Digital Forensics &amp; Incident Response
   </p>
   <p>
-    <a href="https://github.com/AliZafar780/findevil-agent"><img src="https://img.shields.io/badge/version-2.1.1-blue?style=flat-square&logo=github" alt="Version"></a>
+    <a href="https://github.com/AliZafar780/findevil-agent"><img src="https://img.shields.io/badge/version-2.1.3-blue?style=flat-square&logo=github" alt="Version"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
     <a href="https://github.com/AliZafar780/findevil-agent/actions"><img src="https://img.shields.io/badge/build-CI%20%7C%20Docker%20%7C%20Lint%20%7C%20Type%20Check-blue?style=flat-square" alt="CI"></a>
     <img src="https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue?style=flat-square&logo=python" alt="Python">
@@ -340,7 +340,6 @@ findevil-agent/
 │   │   ├── groq_client.py       # Groq LLM + deterministic fallback
 │   │   ├── output_parser.py     # Balanced-brace JSON extraction
 │   │   ├── tool_selector.py     # 58-entry registry with fallback chains
-│   │   └── prompts.py           # System prompts
 │   └── tools/
 │       ├── filesystem.py        # TSK wrappers (fls, icat, mmls, fsstat, istat)
 │       ├── carving.py           # Foremost carving
@@ -391,6 +390,35 @@ All 33 identified gaps have been closed across 13 phases:
 | 13 | Types | All 22 handlers annotated |
 
 See [GAP_ANALYSIS.md](GAP_ANALYSIS.md) for the full report.
+
+---
+
+## ❓ FAQ
+
+### What image formats are supported?
+Raw/dd images (`.dd`, `.raw`, `.img`, `.bin`), split raw images, E01/EWF (Expert Witness), and AFF4. Memory dumps: raw (`.raw`, `.mem`, `.bin`) and ELF (LiME output). PCAP/PCAPNG for network captures.
+
+### How large can evidence files be?
+Tested up to 50 GB raw images. The system uses streaming reads for carving and scans only the first 100 MB of large memory dumps for IOC strings. Hash computations scale linearly with file size (300s timeout).
+
+### Can I analyze multiple evidence files at once?
+Use `findevil investigate` with a directory: `findevil investigate /evidence/case_dir/` — the system runs triage on each file and processes them sequentially, merging results into one timeline and report.
+
+### Why does `pip install -e .` not install Volatility/Regipy?
+Those are in the optional `core` group. Install them explicitly:
+```bash
+pip install -e ".[core]"       # Core forensic tools
+pip install -e ".[dev,core]"   # Everything for development
+```
+
+### How are Volatility plugins selected?
+The system tries `linux.pslist.PsList`, `linux.malfind.Malfind`, `linux.netstat.Netstat`, `linux.bash.Bash` depending on the tool called. If none work, it falls back to string-based IOC scanning. macOS and Windows plugins are not yet supported — contributions welcome.
+
+### What happens when a forensic tool isn't installed?
+Every tool has a graceful fallback: missing YARA → built-in signature scanning, missing Volatility → string IOC scanning, missing TSK → reduced file listing, missing regipy → reglookup CLI (if available). The system never crashes from a missing tool.
+
+### Does the AI mode require internet access?
+Yes — the Groq API needs internet. Deterministic mode works fully offline with no API key. Run with `--no-ai` or omit `GROQ_API_KEY` entirely.
 
 ---
 
@@ -510,6 +538,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ---
 
 <div align="center">
-  <strong>FindEvil Agent v2.1.1</strong><br>
+  <strong>FindEvil Agent v2.1.3</strong><br>
   <sub>Autonomous DFIR Analysis · Memory · Disk · Registry · Network · Carving · YARA</sub>
 </div>

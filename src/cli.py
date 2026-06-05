@@ -214,7 +214,7 @@ def main() -> None:
         help="Run a single forensic tool directly",
         description="Execute one forensic tool against evidence with full control",
     )
-    single.add_argument("tool_name", help="Name of the tool to run")
+    single.add_argument("tool_name", nargs="?", default=None, help="Name of the tool to run (omit to list available tools)")
     single.add_argument("--image", help="Path to evidence image")
     single.add_argument("--inode", type=int, default=0, help="Inode number")
     single.add_argument("--offset", type=int, default=0, help="Partition offset")
@@ -349,6 +349,12 @@ async def _cmd_investigate(args: argparse.Namespace) -> None:
     _print(f"  [bold]Evidence:[/bold] {_s(evidence_path, 80)}")
     _print(f"  [bold]Output:[/bold]   {_s(output_dir, 80)}")
     _print(f"  [bold]AI:[/bold]       {'Enabled' if not args.no_ai else 'Disabled'}")
+    if not args.no_ai and not os.environ.get("GROQ_API_KEY", ""):
+        _print(
+            "  [bold yellow]💡 Tip:[/bold yellow] No GROQ_API_KEY found. Add --no-ai to skip AI and run fully offline."
+            if RICH_AVAILABLE
+            else "  Tip: No GROQ_API_KEY found. Use --no-ai to run fully offline."
+        )
     _print(f"  [bold]Phase:[/bold]    {args.phase or 'all phases'}")
     _print()
 
@@ -583,9 +589,29 @@ async def _cmd_tools() -> None:
 
 async def _cmd_tool(args: argparse.Namespace) -> None:
     """Run a single forensic tool."""
+    tool_name = args.tool_name
+
+    # No tool name provided — show usage hint and bail
+    if tool_name is None:
+        _print(
+            "[bold yellow]Usage:[/bold yellow] findevil tool <tool_name> [options]"
+            if RICH_AVAILABLE
+            else "Usage: findevil tool <tool_name> [options]"
+        )
+        _print(
+            "[yellow]Example:[/yellow] findevil tool fs_list_files --image /evidence/case.dd"
+            if RICH_AVAILABLE
+            else "Example: findevil tool fs_list_files --image /evidence/case.dd"
+        )
+        _print(
+            "\n[bold]💡 Run [cyan]findevil tools[/cyan] to list all available forensic tools[/bold]"
+            if RICH_AVAILABLE
+            else "\nTip: Run 'findevil tools' to list all available tools"
+        )
+        return
+
     from src.agent.loop import SimpleMCPClient
 
-    tool_name = args.tool_name
     arguments = {}
 
     if args.image:

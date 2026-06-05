@@ -2,6 +2,47 @@
 
 All notable changes to FindEvil Agent will be documented in this file.
 
+## [2.1.3] - 2026-06-06
+
+### Dependency & Housekeeping
+
+#### Dependency Split
+- Separated `full` into `core` (volatility3, regipy) and `full` (alias for core + heavy deps placeholders)
+- Added `ai` group for future ML dependencies
+- `pip install -e ".[core]"` is now the lightweight forensic install (under 10s)
+- `pip install -e "."` stays minimal — only fastmcp, pydantic, httpx, groq, rich
+- `pip install -e ".[all]"` installs dev + core (still fast — no heavy deps by default)
+
+#### Dead Code Removal (10 orphaned functions)
+- `memory.py`: removed `scan_malware`, `dump_envars`, `scan_lsmod`, `scan_lsof`
+- `registry.py`: removed `analyze_hive_summary`
+- `network.py`: removed `extract_conversations`, `extract_http_objects` (hardcoded paths, no callers)
+- `hashing.py`: removed `compute_deep_hash`, `verify_hash_match`
+- `patterns.py`: removed `scan_with_builtin_rules`
+- All confirmed unreachable via cross-file reference audit
+
+#### Thread Safety
+- `_audit_log()` converted to `async def` with `asyncio.Lock` guarding `_audit_entries` and `_audit_buffer`
+- `_get_audit_logs()` made async with lock-protected list copy
+- Added `_audit_lock = asyncio.Lock()` alongside existing `_call_lock`
+
+#### Documentation
+- Added FAQ section to README.md (7 questions: formats, size limits, multi-evidence, install groups, Volatility plugins, tool fallbacks, AI vs offline)
+- Expanded CONTRIBUTING.md: Conventional Commits table, branching strategy (`develop` → `main`), PR process with CI gates, full checklist
+- Removed dead reference to `prompts.py` from README project structure
+
+## [2.1.2] - 2026-06-06
+
+### Hackathon Hardening — 10-Judge Simulation Fixes
+
+#### UX Fixes
+- `findevil tool` with no args now shows helpful usage guide + tool listing hint instead of crashing with "Unknown tool 'help'"
+- Auto-suggest `--no-ai` flag when `GROQ_API_KEY` is missing and user runs `investigate` without it
+
+#### Housekeeping
+- `.dockerignore` added (47 entries) — stops venv/, .git/, __pycache__ from bloating Docker build context
+- `src/agent/prompts.py` removed — orphaned dead code (`DFIR_ANALYST_PROMPT` was defined but never imported); actual prompt lives in `groq_client.py`
+
 ## [2.1.1] - 2026-06-05
 
 ### Production Hardening — 33 Gaps Closed

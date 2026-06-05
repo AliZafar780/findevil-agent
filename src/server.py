@@ -94,9 +94,11 @@ def _tool_config(name: str) -> dict[str, Any]:
     return _TOOL_CONFIG.get(name, {})  # type: ignore[no-any-return]
 
 
-# ── Concurrency Lock ───────────────────────────────────────────────
+# ── Concurrency Locks ──────────────────────────────────────────────
 # MCP STDIO transport is single-channel; this lock prevents interleaved responses
 _call_lock = asyncio.Lock()
+# Guard for concurrent access to the audit buffer (extensibility safety)
+_audit_lock = asyncio.Lock()
 
 # ── Audit Log Setup ───────────────────────────────────────────────
 _audit_log_path = (
@@ -124,7 +126,7 @@ _audit_buffer: list[dict[str, Any]] = []
 _AUDIT_FLUSH_INTERVAL = 10  # Flush to disk every N entries
 
 
-def _audit_log(
+async def _audit_log(
     tool: str,
     arguments: dict[str, Any],
     result: dict[str, Any],
@@ -140,12 +142,12 @@ def _audit_log(
         "duration_ms": duration_ms,
         "error": _trunc(str(error)[:500] if error else str(result.get("error") or ""), 500),
     }
-    _audit_entries.append(entry)
-    _audit_buffer.append(entry)
-
-    # Flush to disk periodically (buffered write)
-    if len(_audit_buffer) >= _AUDIT_FLUSH_INTERVAL:
-        _flush_audit_buffer()
+    async with _audit_lock:
+        _audit_entries.append(entry)
+        _audit_buffer.append(entry)
+        # Flush to disk periodically (buffered write)
+        if len(_audit_buffer) >= _AUDIT_FLUSH_INTERVAL:
+            _flush_audit_buffer()
 
 
 def _flush_audit_buffer() -> None:
@@ -162,9 +164,10 @@ def _flush_audit_buffer() -> None:
         logger.warning(f"Failed to write audit log: {e}")
 
 
-def _get_audit_logs() -> list[dict[str, Any]]:
+async def _get_audit_logs() -> list[dict[str, Any]]:
     """Return all audit entries for the current session."""
-    return _audit_entries
+    async with _audit_lock:
+        return list(_audit_entries)
 
 
 def _cleanup() -> None:
@@ -834,14 +837,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     result_data = {"success": True}
             else:
                 result_data = {"success": True}
-            _audit_log(name, arguments, result_data, duration)
+            await _audit_log(name, arguments, result_data, duration)
 
             return result
 
         except ValueError as e:
             duration = int((time.time() - start) * 1000)
             logger.warning(f"Tool validation error: {e}")
-            _audit_log(name, arguments, {"success": False}, duration, str(e))
+            await _audit_log(name, arguments, {"success": False}, duration, str(e))
             return [
                 TextContent(
                     type="text",
@@ -857,7 +860,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         except Exception as e:
             duration = int((time.time() - start) * 1000)
             logger.warning(f"Tool {name} failed: {e}")
-            _audit_log(name, arguments, {"success": False}, duration, str(e)[:500])
+            await _audit_log(name, arguments, {"success": False}, duration, str(e)[:500])
             return [
                 TextContent(
                     type="text",
@@ -2378,15 +2381,18 @@ async def _handle_get_tool_config(args: dict[str, Any]) -> list[TextContent]:
 async def _handle_audit_logs(args: dict[str, Any]) -> list[TextContent]:
     """Return audit logs from current session."""
     limit = min(args.get("limit", 100), 10000)
-    logs = _get_audit_logs()[-limit:]
+    logs = (await _get_audit_logs())[-limit:]
+    async with _audit_lock:
+        has_entries = bool(_audit_entries)
+        total = len(_audit_entries)
     return [
         TextContent(
             type="text",
             text=json.dumps(
                 {
                     "success": True,
-                    "session_log_path": str(_audit_log_path) if _audit_entries else "",
-                    "total_entries": len(_get_audit_logs()),
+                    "session_log_path": str(_audit_log_path) if has_entries else "",
+                    "total_entries": total,
                     "entries": logs,
                 },
                 indent=2,

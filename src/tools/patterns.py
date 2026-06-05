@@ -149,11 +149,6 @@ def scan_yara(
         return PatternResult(success=False, error=str(e))
 
 
-def scan_with_builtin_rules(target_path: str) -> PatternResult:
-    """Scan using built-in FindEvil YARA rules."""
-    return scan_yara(target_path, rules_content=BUILTIN_RULES)
-
-
 def search_text_patterns(file_path: str, patterns: list[str]) -> PatternResult:
     """Search for text patterns in a file using grep-like matching."""
     try:

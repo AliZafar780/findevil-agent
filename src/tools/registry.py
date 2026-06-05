@@ -99,33 +99,4 @@ def query(hive_path: str, key: str = "/", recursive: bool = False) -> RegistryRe
         return RegistryResult(success=False, error=str(e))
 
 
-def analyze_hive_summary(hive_path: str) -> RegistryResult:
-    """Get a summary of a registry hive structure."""
-    try:
-        from regipy import RegistryHive
 
-        hive = RegistryHive(hive_path)  # type: ignore[no-untyped-call]
-
-        top_keys = []
-        for key in hive.root.iter_subkeys():  # type: ignore[no-untyped-call]
-            try:
-                top_keys.append(
-                    {
-                        "name": key.name,
-                        "timestamp": str(key.timestamp) if key.timestamp else None,
-                        "subkey_count": key.subkey_count,
-                        "value_count": len(key.values) if hasattr(key, "values") else 0,
-                    }
-                )
-            except Exception:
-                top_keys.append({"name": key.name})
-
-        return RegistryResult(
-            success=True,
-            key_count=len(top_keys),
-            data=top_keys,
-        )
-    except ImportError:
-        return RegistryResult(success=False, error="regipy not installed")
-    except Exception as e:
-        return RegistryResult(success=False, error=str(e))

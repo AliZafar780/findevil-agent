@@ -254,11 +254,6 @@ def list_processes(memory_path: str) -> MemoryResult:
     return analyze(memory_path, "linux.pslist.PsList")
 
 
-def scan_malware(memory_path: str, yara_rules: Optional[str] = None) -> MemoryResult:
-    """Scan memory for malware signs. Tries malfind, falls back to string scanning."""
-    return analyze(memory_path, "linux.malfind.Malfind")
-
-
 def scan_network(memory_path: str) -> MemoryResult:
     """Extract network connection artifacts from memory."""
     return analyze(memory_path, "linux.netstat.Netstat")
@@ -267,18 +262,3 @@ def scan_network(memory_path: str) -> MemoryResult:
 def dump_cmdline(memory_path: str) -> MemoryResult:
     """Extract command lines from memory processes."""
     return analyze(memory_path, "linux.bash.Bash")
-
-
-def dump_envars(memory_path: str) -> MemoryResult:
-    """Extract environment variables from memory processes."""
-    return analyze(memory_path, "linux.envars.Envars")
-
-
-def scan_lsmod(memory_path: str) -> MemoryResult:
-    """List kernel modules from memory."""
-    return analyze(memory_path, "linux.lsmod.Lsmod")
-
-
-def scan_lsof(memory_path: str) -> MemoryResult:
-    """List open files from memory processes."""
-    return analyze(memory_path, "linux.lsof.Lsof")
