@@ -8,8 +8,9 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 COPY pyproject.toml .
+COPY src/ src/
 RUN pip install --no-cache-dir build && \
-    pip install --no-cache-dir -e .[dev,full]
+    pip install --no-cache-dir .[dev,full]
 
 # ── Stage 2: Full Tool Image ────────────────────────────────────
 FROM ubuntu:24.04
