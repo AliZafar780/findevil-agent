@@ -2,10 +2,11 @@
 Windows Registry Analysis Tools
 Wraps regipy and reglookup for registry hive analysis.
 """
+
 import subprocess
-from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 
 class RegistryResult(BaseModel):
@@ -47,11 +48,13 @@ def query(hive_path: str, key: str = "/", recursive: bool = False) -> RegistryRe
             # Just get the subkeys at the given level
             try:
                 for entry in hive.get_key(key).iter_subkeys():
-                    result_data.append({
-                        "path": entry.path,
-                        "timestamp": str(entry.timestamp) if entry.timestamp else None,
-                    })
-            except Exception as e:
+                    result_data.append(
+                        {
+                            "path": entry.path,
+                            "timestamp": str(entry.timestamp) if entry.timestamp else None,
+                        }
+                    )
+            except Exception:
                 # Try direct key lookup
                 result_data.append({"path": key, "info": str(hive.get_key(key))})
 
@@ -73,11 +76,13 @@ def query(hive_path: str, key: str = "/", recursive: bool = False) -> RegistryRe
                 if line.strip() and not line.startswith("#"):
                     parts = line.split("|")
                     if len(parts) >= 3:
-                        entries.append({
-                            "path": parts[0],
-                            "type": parts[1],
-                            "value": parts[2] if len(parts) > 2 else "",
-                        })
+                        entries.append(
+                            {
+                                "path": parts[0],
+                                "type": parts[1],
+                                "value": parts[2] if len(parts) > 2 else "",
+                            }
+                        )
             return RegistryResult(
                 success=result.returncode == 0,
                 key_count=len(entries),
@@ -98,17 +103,20 @@ def analyze_hive_summary(hive_path: str) -> RegistryResult:
     """Get a summary of a registry hive structure."""
     try:
         from regipy import RegistryHive
+
         hive = RegistryHive(hive_path)
 
         top_keys = []
         for key in hive.root.iter_subkeys():
             try:
-                top_keys.append({
-                    "name": key.name,
-                    "timestamp": str(key.timestamp) if key.timestamp else None,
-                    "subkey_count": key.subkey_count,
-                    "value_count": len(key.values) if hasattr(key, "values") else 0,
-                })
+                top_keys.append(
+                    {
+                        "name": key.name,
+                        "timestamp": str(key.timestamp) if key.timestamp else None,
+                        "subkey_count": key.subkey_count,
+                        "value_count": len(key.values) if hasattr(key, "values") else 0,
+                    }
+                )
             except Exception:
                 top_keys.append({"name": key.name})
 

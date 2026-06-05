@@ -9,6 +9,7 @@ Usage:
   python -m src tools
   python -m src check
 """
+
 import sys
 
 if __name__ == "__main__":
@@ -34,9 +35,12 @@ if __name__ == "__main__":
     elif len(sys.argv) >= 2 and sys.argv[1] == "serve":
         # Start MCP server directly (no CLI overhead)
         import asyncio
+
         from .server import main
+
         asyncio.run(main())
     else:
         # Route through CLI
         from .cli import main
+
         main()

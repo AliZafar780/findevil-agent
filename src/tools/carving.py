@@ -2,11 +2,12 @@
 File Carving and Feature Extraction Tools
 Wraps foremost, bulk_extractor, and binwalk.
 """
+
 import subprocess
-import json
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 
 class CarvingResult(BaseModel):
@@ -17,7 +18,9 @@ class CarvingResult(BaseModel):
     output_dir: Optional[str] = None
 
 
-def carve_files(image_path: str, file_types: str = "all", output_dir: Optional[str] = None) -> CarvingResult:
+def carve_files(
+    image_path: str, file_types: str = "all", output_dir: Optional[str] = None
+) -> CarvingResult:
     """Carve deleted files from disk image based on headers using foremost."""
     try:
         if output_dir is None:
@@ -36,11 +39,13 @@ def carve_files(image_path: str, file_types: str = "all", output_dir: Optional[s
         if Path(output_dir).exists():
             for f in Path(output_dir).rglob("*"):
                 if f.is_file() and f.stat().st_size > 0:
-                    carved_files.append({
-                        "path": str(f),
-                        "size": f.stat().st_size,
-                        "name": f.name,
-                    })
+                    carved_files.append(
+                        {
+                            "path": str(f),
+                            "size": f.stat().st_size,
+                            "name": f.name,
+                        }
+                    )
 
         if not result.returncode == 0 and not result.stdout:
             return CarvingResult(
@@ -84,7 +89,7 @@ def extract_features(image_path: str, scanners: str = "all") -> CarvingResult:
                     try:
                         lines = f.read_text(errors="replace").split("\n")
                         # Filter out comment/header lines
-                        data_lines = [l for l in lines if l.strip() and not l.startswith("#")]
+                        data_lines = [ln for ln in lines if ln.strip() and not ln.startswith("#")]
                         feature_files[f.name] = {
                             "path": str(f),
                             "size": f.stat().st_size,
@@ -123,10 +128,12 @@ def analyze_binary(image_path: str) -> CarvingResult:
                 parts = line.split(maxsplit=3)
                 if len(parts) >= 3:
                     try:
-                        entries.append({
-                            "offset": int(parts[0]),
-                            "description": parts[-1] if len(parts) > 1 else "",
-                        })
+                        entries.append(
+                            {
+                                "offset": int(parts[0]),
+                                "description": parts[-1] if len(parts) > 1 else "",
+                            }
+                        )
                     except ValueError:
                         continue
 

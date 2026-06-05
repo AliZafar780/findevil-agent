@@ -5,6 +5,7 @@ Connects LLM agents to SIFT Workstation forensic tools via the Model Context Pro
 Designed for robustness: all tools have typed schemas, path validation,
 audit logging, output size limits, and concurrent access protection.
 """
+
 import asyncio
 import atexit
 import json
@@ -13,7 +14,6 @@ import os
 import shutil
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -30,13 +30,15 @@ except ImportError:
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
+from mcp.types import TextContent, Tool
+
+from src.tools.carving import extract_features as carve_extract_features
 
 # Lazy-loaded tool modules (imported once at module level)
-from src.tools.memory import analyze as mem_analyze, list_processes, scan_network, dump_cmdline
-from src.tools.timeline import build as timeline_build, filter_timeline
-from src.tools.carving import extract_features as carve_extract_features
-from src.tools.registry import query as reg_query, analyze_hive_summary
+from src.tools.memory import analyze as mem_analyze
+from src.tools.memory import dump_cmdline, list_processes, scan_network
+from src.tools.timeline import build as timeline_build
+from src.tools.timeline import filter_timeline
 
 # ── Configuration ──────────────────────────────────────────────────
 logging.basicConfig(
@@ -51,7 +53,7 @@ RESULTS_ROOT = Path(os.environ.get("RESULTS_ROOT", "/results"))
 SERVER_NAME = "findevil-mcp"
 SERVER_VERSION = "2.0.0"
 MAX_OUTPUT_CHARS = 100_000  # Truncate tool output to prevent memory issues
-MAX_TIMEOUT = 600           # Maximum tool timeout in seconds
+MAX_TIMEOUT = 600  # Maximum tool timeout in seconds
 
 # ── Tool Configuration (loaded from tools.toml) ─────────────────────
 
@@ -98,7 +100,9 @@ def _tool_config(name: str) -> dict[str, Any]:
 _call_lock = asyncio.Lock()
 
 # ── Audit Log Setup ───────────────────────────────────────────────
-_audit_log_path = RESULTS_ROOT / "audit" / f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+_audit_log_path = (
+    RESULTS_ROOT / "audit" / f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+)
 _audit_entries: list[dict] = []
 
 
@@ -171,6 +175,7 @@ atexit.register(_cleanup)
 
 # ── Tool Execution ────────────────────────────────────────────────
 
+
 async def _run_tool(cmd: list, timeout: int = 120, stdin_data: str = None) -> dict:
     """
     Run a command-line tool asynchronously and return structured result.
@@ -207,26 +212,38 @@ async def _run_tool(cmd: list, timeout: int = 120, stdin_data: str = None) -> di
         }
     except subprocess.TimeoutExpired:
         return {
-            "success": False, "stdout": "", "stderr": f"Command timed out after {timeout}s",
-            "returncode": -1, "duration_ms": timeout * 1000,
+            "success": False,
+            "stdout": "",
+            "stderr": f"Command timed out after {timeout}s",
+            "returncode": -1,
+            "duration_ms": timeout * 1000,
             "command": _trunc(" ".join(str(c) for c in cmd), 500),
         }
     except FileNotFoundError as e:
         return {
-            "success": False, "stdout": "", "stderr": f"Tool not found: {e}. Is SIFT Workstation installed?",
-            "returncode": -1, "duration_ms": 0,
+            "success": False,
+            "stdout": "",
+            "stderr": f"Tool not found: {e}. Is SIFT Workstation installed?",
+            "returncode": -1,
+            "duration_ms": 0,
             "command": _trunc(" ".join(str(c) for c in cmd), 500),
         }
     except PermissionError as e:
         return {
-            "success": False, "stdout": "", "stderr": f"Permission denied: {e}",
-            "returncode": -1, "duration_ms": 0,
+            "success": False,
+            "stdout": "",
+            "stderr": f"Permission denied: {e}",
+            "returncode": -1,
+            "duration_ms": 0,
             "command": _trunc(" ".join(str(c) for c in cmd), 500),
         }
     except Exception as e:
         return {
-            "success": False, "stdout": "", "stderr": f"Unexpected error: {e}",
-            "returncode": -1, "duration_ms": int((time.time() - start) * 1000),
+            "success": False,
+            "stdout": "",
+            "stderr": f"Unexpected error: {e}",
+            "returncode": -1,
+            "duration_ms": int((time.time() - start) * 1000),
             "command": _trunc(" ".join(str(c) for c in cmd), 500),
         }
 
@@ -293,6 +310,7 @@ def _find_tool(name: str) -> str:
 
 # ── Security Validation ────────────────────────────────────────────
 
+
 def _validate_evidence_path(path: str) -> Optional[str]:
     """Validate that a path is within the evidence root and exists.
     Does NOT leak the requested path in error messages (privacy/security)."""
@@ -353,6 +371,7 @@ server = Server(SERVER_NAME)
 
 # ── Tool Definitions ──────────────────────────────────────────────
 
+
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     """Register all 21 forensic tools with typed schemas."""
@@ -364,7 +383,10 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "image_path": {"type": "string", "description": "Path to disk image (raw, E01, etc.)"},
+                    "image_path": {
+                        "type": "string",
+                        "description": "Path to disk image (raw, E01, etc.)",
+                    },
                 },
                 "required": ["image_path"],
             },
@@ -376,9 +398,21 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "image_path": {"type": "string", "description": "Path to disk image"},
-                    "offset": {"type": "integer", "description": "Partition offset in sectors", "default": 0},
-                    "path": {"type": "string", "description": "Path or inode to list", "default": ""},
-                    "recursive": {"type": "boolean", "description": "Recurse into subdirectories", "default": False},
+                    "offset": {
+                        "type": "integer",
+                        "description": "Partition offset in sectors",
+                        "default": 0,
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Path or inode to list",
+                        "default": "",
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "Recurse into subdirectories",
+                        "default": False,
+                    },
                 },
                 "required": ["image_path"],
             },
@@ -429,8 +463,15 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "image_path": {"type": "string", "description": "Path to disk image"},
-                    "output_dir": {"type": "string", "description": "Output directory (must be under /results)"},
-                    "file_types": {"type": "string", "description": "File types to carve (e.g., 'jpg,pdf,zip')", "default": "all"},
+                    "output_dir": {
+                        "type": "string",
+                        "description": "Output directory (must be under /results)",
+                    },
+                    "file_types": {
+                        "type": "string",
+                        "description": "File types to carve (e.g., 'jpg,pdf,zip')",
+                        "default": "all",
+                    },
                 },
                 "required": ["image_path", "output_dir"],
             },
@@ -443,7 +484,10 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "target": {"type": "string", "description": "File or directory to scan"},
-                    "rules": {"type": "string", "description": "YARA rule content (inline). Must be valid YARA syntax."},
+                    "rules": {
+                        "type": "string",
+                        "description": "YARA rule content (inline). Must be valid YARA syntax.",
+                    },
                 },
                 "required": ["target", "rules"],
             },
@@ -455,7 +499,11 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "file_path": {"type": "string", "description": "Path to file"},
-                    "algorithm": {"type": "string", "description": "Hash algorithm: md5, sha1, sha256", "default": "sha256"},
+                    "algorithm": {
+                        "type": "string",
+                        "description": "Hash algorithm: md5, sha1, sha256",
+                        "default": "sha256",
+                    },
                 },
                 "required": ["file_path"],
             },
@@ -466,7 +514,11 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "subdir": {"type": "string", "description": "Subdirectory to list (e.g., 'cases', 'disk')", "default": ""},
+                    "subdir": {
+                        "type": "string",
+                        "description": "Subdirectory to list (e.g., 'cases', 'disk')",
+                        "default": "",
+                    },
                 },
             },
         ),
@@ -477,8 +529,15 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "memory_path": {"type": "string", "description": "Path to memory capture file (.mem, .vmem, .elf, .core)"},
-                    "plugin": {"type": "string", "description": "Volatility3 plugin name (e.g. linux.pslist.PsList, linux.bash.Bash)", "default": "linux.pslist.PsList"},
+                    "memory_path": {
+                        "type": "string",
+                        "description": "Path to memory capture file (.mem, .vmem, .elf, .core)",
+                    },
+                    "plugin": {
+                        "type": "string",
+                        "description": "Volatility3 plugin name (e.g. linux.pslist.PsList, linux.bash.Bash)",
+                        "default": "linux.pslist.PsList",
+                    },
                 },
                 "required": ["memory_path"],
             },
@@ -523,8 +582,15 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "hive_path": {"type": "string", "description": "Path to registry hive file (SAM, SYSTEM, SOFTWARE, NTUSER.DAT)"},
-                    "key": {"type": "string", "description": "Registry key path to query", "default": "/"},
+                    "hive_path": {
+                        "type": "string",
+                        "description": "Path to registry hive file (SAM, SYSTEM, SOFTWARE, NTUSER.DAT)",
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Registry key path to query",
+                        "default": "/",
+                    },
                 },
                 "required": ["hive_path"],
             },
@@ -537,9 +603,21 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "pcap_path": {"type": "string", "description": "Path to PCAP/PCAPNG file"},
-                    "display_filter": {"type": "string", "description": "Wireshark display filter", "default": ""},
-                    "max_packets": {"type": "integer", "description": "Max packets to analyze", "default": 100},
-                    "fields": {"type": "string", "description": "Comma-separated fields to extract", "default": "frame.number,ip.src,ip.dst,frame.protocols"},
+                    "display_filter": {
+                        "type": "string",
+                        "description": "Wireshark display filter",
+                        "default": "",
+                    },
+                    "max_packets": {
+                        "type": "integer",
+                        "description": "Max packets to analyze",
+                        "default": 100,
+                    },
+                    "fields": {
+                        "type": "string",
+                        "description": "Comma-separated fields to extract",
+                        "default": "frame.number,ip.src,ip.dst,frame.protocols",
+                    },
                 },
                 "required": ["pcap_path"],
             },
@@ -562,8 +640,15 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "source_path": {"type": "string", "description": "Path to evidence (disk image, directory, etc.)"},
-                    "output_path": {"type": "string", "description": "Output path for .plaso storage file (optional)", "default": ""},
+                    "source_path": {
+                        "type": "string",
+                        "description": "Path to evidence (disk image, directory, etc.)",
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": "Output path for .plaso storage file (optional)",
+                        "default": "",
+                    },
                 },
                 "required": ["source_path"],
             },
@@ -574,9 +659,20 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "storage_path": {"type": "string", "description": "Path to .plaso storage file"},
-                    "query": {"type": "string", "description": "Filter query (e.g., 'date > 2024-01-01')", "default": ""},
-                    "output_format": {"type": "string", "description": "Output format: json, csv", "default": "json"},
+                    "storage_path": {
+                        "type": "string",
+                        "description": "Path to .plaso storage file",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Filter query (e.g., 'date > 2024-01-01')",
+                        "default": "",
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "description": "Output format: json, csv",
+                        "default": "json",
+                    },
                 },
                 "required": ["storage_path"],
             },
@@ -589,7 +685,11 @@ async def list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "image_path": {"type": "string", "description": "Path to disk image"},
-                    "scanners": {"type": "string", "description": "Scanners to run (comma-separated)", "default": "all"},
+                    "scanners": {
+                        "type": "string",
+                        "description": "Scanners to run (comma-separated)",
+                        "default": "all",
+                    },
                 },
                 "required": ["image_path"],
             },
@@ -601,10 +701,24 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "evidence_path": {"type": "string", "description": "Path to evidence with known ground truth"},
-                    "ground_truth": {"type": "string", "description": "JSON array of expected finding objects (with 'type' and 'description' fields)"},
-                    "agent_findings": {"type": "string", "description": "JSON array of agent findings to compare (optional)", "default": "[]"},
-                    "detection_threshold": {"type": "number", "description": "Confidence threshold for detection match", "default": 0.5},
+                    "evidence_path": {
+                        "type": "string",
+                        "description": "Path to evidence with known ground truth",
+                    },
+                    "ground_truth": {
+                        "type": "string",
+                        "description": "JSON array of expected finding objects (with 'type' and 'description' fields)",
+                    },
+                    "agent_findings": {
+                        "type": "string",
+                        "description": "JSON array of agent findings to compare (optional)",
+                        "default": "[]",
+                    },
+                    "detection_threshold": {
+                        "type": "number",
+                        "description": "Confidence threshold for detection match",
+                        "default": 0.5,
+                    },
                 },
                 "required": ["evidence_path", "ground_truth"],
             },
@@ -616,7 +730,10 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "tool_name": {"type": "string", "description": "Tool name (e.g., fls, icat, foremost)"},
+                    "tool_name": {
+                        "type": "string",
+                        "description": "Tool name (e.g., fls, icat, foremost)",
+                    },
                 },
                 "required": ["tool_name"],
             },
@@ -628,7 +745,11 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "limit": {"type": "integer", "description": "Max log entries to return", "default": 100},
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max log entries to return",
+                        "default": 100,
+                    },
                 },
             },
         ),
@@ -636,6 +757,7 @@ async def list_tools() -> list[Tool]:
 
 
 # ── Tool Call Router ──────────────────────────────────────────────
+
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
@@ -698,15 +820,17 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 "pcap_list_protocols": _handle_pcap_protocols,
                 "timeline_build": _handle_timeline_build,
                 "timeline_filter": _handle_timeline_filter,
-            "get_tool_config": _handle_get_tool_config,
-            "extract_features": _handle_extract_features,
+                "get_tool_config": _handle_get_tool_config,
+                "extract_features": _handle_extract_features,
                 "benchmark_accuracy": _handle_benchmark,
                 "get_audit_logs": _handle_audit_logs,
             }
 
             handler = handler_map.get(name)
             if handler is None:
-                raise ValueError(f"Unknown tool: '{name}'. Use 'tools' command to list available tools.")
+                raise ValueError(
+                    f"Unknown tool: '{name}'. Use 'tools' command to list available tools."
+                )
 
             result = await handler(arguments)
             duration = int((time.time() - start) * 1000)
@@ -727,16 +851,34 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             duration = int((time.time() - start) * 1000)
             logger.warning(f"Tool validation error: {e}")
             _audit_log(name, arguments, {"success": False}, duration, str(e))
-            return [TextContent(type="text", text=json.dumps({
-                "success": False, "error": str(e), "tool": name,
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": str(e),
+                            "tool": name,
+                        }
+                    ),
+                )
+            ]
         except Exception as e:
             duration = int((time.time() - start) * 1000)
             logger.warning(f"Tool {name} failed: {e}")
             _audit_log(name, arguments, {"success": False}, duration, str(e)[:500])
-            return [TextContent(type="text", text=json.dumps({
-                "success": False, "error": f"Tool execution failed: {str(e)[:200]}", "tool": name,
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": f"Tool execution failed: {str(e)[:200]}",
+                            "tool": name,
+                        }
+                    ),
+                )
+            ]
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -744,6 +886,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 # ═══════════════════════════════════════════════════════════════════
 
 # ── File System Handlers ─────────────────────────────────────────
+
 
 async def _handle_partition_scan(args: dict) -> list[TextContent]:
     """Scan partition table using mmls."""
@@ -760,37 +903,56 @@ async def _handle_partition_scan(args: dict) -> list[TextContent]:
         partitions = []
         for line in result["stdout"].split("\n"):
             stripped = line.strip()
-            if stripped and (stripped[0].isdigit() or "Meta" in stripped or "Unallocated" in stripped):
+            if stripped and (
+                stripped[0].isdigit() or "Meta" in stripped or "Unallocated" in stripped
+            ):
                 parts = line.split()
                 if len(parts) >= 5:
                     try:
                         slot_str = parts[0].rstrip(":")
                         if slot_str.isdigit():
-                            partitions.append({
-                                "slot": int(slot_str),
-                                "start": int(parts[2]),
-                                "end": int(parts[3]),
-                                "length": int(parts[4]),
-                                "description": " ".join(parts[5:]),
-                            })
+                            partitions.append(
+                                {
+                                    "slot": int(slot_str),
+                                    "start": int(parts[2]),
+                                    "end": int(parts[3]),
+                                    "length": int(parts[4]),
+                                    "description": " ".join(parts[5:]),
+                                }
+                            )
                     except (ValueError, IndexError):
                         continue
 
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "image": image_path,
-            "partition_count": len(partitions),
-            "partitions": partitions,
-            "raw_output": result["stdout"][:10000],
-            "duration_ms": result["duration_ms"],
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "image": image_path,
+                        "partition_count": len(partitions),
+                        "partitions": partitions,
+                        "raw_output": result["stdout"][:10000],
+                        "duration_ms": result["duration_ms"],
+                    },
+                    indent=2,
+                ),
+            )
+        ]
     else:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Partition scan failed: {result['stderr'] or 'No partition table found. The image may not have a GPT/MBR layout.'}",
-            "command": result["command"],
-            "suggestion": "Try fs_filesystem_info if this is a raw filesystem image without a partition table.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Partition scan failed: {result['stderr'] or 'No partition table found. The image may not have a GPT/MBR layout.'}",
+                        "command": result["command"],
+                        "suggestion": "Try fs_filesystem_info if this is a raw filesystem image without a partition table.",
+                    }
+                ),
+            )
+        ]
 
 
 async def _handle_list_files(args: dict) -> list[TextContent]:
@@ -819,21 +981,36 @@ async def _handle_list_files(args: dict) -> list[TextContent]:
 
     if result["success"] or result["returncode"] == 1:
         entries = [line for line in result["stdout"].split("\n") if line.strip()]
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "file_count": len(entries),
-            "entries": entries[:1000],
-            "truncated": len(entries) > 1000,
-            "raw_output": result["stdout"][:50000],
-            "duration_ms": result["duration_ms"],
-            "command": result["command"],
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "file_count": len(entries),
+                        "entries": entries[:1000],
+                        "truncated": len(entries) > 1000,
+                        "raw_output": result["stdout"][:50000],
+                        "duration_ms": result["duration_ms"],
+                        "command": result["command"],
+                    },
+                    indent=2,
+                ),
+            )
+        ]
     else:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"File listing failed: {result['stderr'] or 'Unknown error'}",
-            "suggestion": "Verify the image path and partition offset. Try fs_partition_scan first.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"File listing failed: {result['stderr'] or 'Unknown error'}",
+                        "suggestion": "Verify the image path and partition offset. Try fs_partition_scan first.",
+                    }
+                ),
+            )
+        ]
 
 
 async def _handle_extract_file(args: dict) -> list[TextContent]:
@@ -843,7 +1020,14 @@ async def _handle_extract_file(args: dict) -> list[TextContent]:
     offset = args.get("offset", 0)
 
     if inode <= 0:
-        return [TextContent(type="text", text=json.dumps({"success": False, "error": "Invalid inode number. Must be a positive integer."}))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {"success": False, "error": "Invalid inode number. Must be a positive integer."}
+                ),
+            )
+        ]
 
     err = _validate_evidence_path(image_path)
     if err:
@@ -860,20 +1044,35 @@ async def _handle_extract_file(args: dict) -> list[TextContent]:
 
     if result["success"]:
         content = result["stdout"]
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "inode": inode,
-            "size": len(content),
-            "preview": content[:5000],
-            "preview_truncated": len(content) > 5000,
-            "duration_ms": result["duration_ms"],
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "inode": inode,
+                        "size": len(content),
+                        "preview": content[:5000],
+                        "preview_truncated": len(content) > 5000,
+                        "duration_ms": result["duration_ms"],
+                    },
+                    indent=2,
+                ),
+            )
+        ]
     else:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Failed to extract inode {inode}: {result['stderr'] or 'File may not exist'}",
-            "suggestion": "Check that the inode exists. Try fs_list_files first to find valid inodes.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Failed to extract inode {inode}: {result['stderr'] or 'File may not exist'}",
+                        "suggestion": "Check that the inode exists. Try fs_list_files first to find valid inodes.",
+                    }
+                ),
+            )
+        ]
 
 
 async def _handle_file_metadata(args: dict) -> list[TextContent]:
@@ -883,7 +1082,11 @@ async def _handle_file_metadata(args: dict) -> list[TextContent]:
     offset = args.get("offset", 0)
 
     if inode <= 0:
-        return [TextContent(type="text", text=json.dumps({"success": False, "error": "Invalid inode number."}))]
+        return [
+            TextContent(
+                type="text", text=json.dumps({"success": False, "error": "Invalid inode number."})
+            )
+        ]
 
     err = _validate_evidence_path(image_path)
     if err:
@@ -899,19 +1102,34 @@ async def _handle_file_metadata(args: dict) -> list[TextContent]:
     result = await _run_tool(cmd)
 
     if result["success"]:
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "inode": inode,
-            "metadata": result["stdout"][:10000],
-            "raw_output": result["stdout"][:10000],
-            "duration_ms": result["duration_ms"],
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "inode": inode,
+                        "metadata": result["stdout"][:10000],
+                        "raw_output": result["stdout"][:10000],
+                        "duration_ms": result["duration_ms"],
+                    },
+                    indent=2,
+                ),
+            )
+        ]
     else:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Metadata lookup failed: {result['stderr'] or 'Inode may not exist'}",
-            "suggestion": "The inode may be invalid or the file system type may not be supported.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Metadata lookup failed: {result['stderr'] or 'Inode may not exist'}",
+                        "suggestion": "The inode may be invalid or the file system type may not be supported.",
+                    }
+                ),
+            )
+        ]
 
 
 async def _handle_fs_info(args: dict) -> list[TextContent]:
@@ -933,21 +1151,37 @@ async def _handle_fs_info(args: dict) -> list[TextContent]:
     result = await _run_tool(cmd)
 
     if result["success"]:
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "fsstat_output": result["stdout"][:20000],
-            "raw_output": result["stdout"][:20000],
-            "duration_ms": result["duration_ms"],
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "fsstat_output": result["stdout"][:20000],
+                        "raw_output": result["stdout"][:20000],
+                        "duration_ms": result["duration_ms"],
+                    },
+                    indent=2,
+                ),
+            )
+        ]
     else:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Filesystem info failed: {result['stderr'] or 'Unrecognized filesystem type. The image may be unformatted or use an unsupported FS.'}",
-            "suggestion": "Try running fs_partition_scan first, or use a different offset.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Filesystem info failed: {result['stderr'] or 'Unrecognized filesystem type. The image may be unformatted or use an unsupported FS.'}",
+                        "suggestion": "Try running fs_partition_scan first, or use a different offset.",
+                    }
+                ),
+            )
+        ]
 
 
 # ── Carving Handlers ────────────────────────────────────────────
+
 
 async def _handle_carve(args: dict) -> list[TextContent]:
     """Carve files using foremost."""
@@ -966,18 +1200,33 @@ async def _handle_carve(args: dict) -> list[TextContent]:
 
     foremost_cmd = _find_tool("foremost")
     if not Path(foremost_cmd).exists():
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "foremost not found. Install: sudo apt-get install foremost",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "foremost not found. Install: sudo apt-get install foremost",
+                    }
+                ),
+            )
+        ]
 
     # Create output directory just before running (not before validation)
     try:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
     except PermissionError as e:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False, "error": f"Cannot create output directory: {e}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Cannot create output directory: {e}",
+                    }
+                ),
+            )
+        ]
     cmd = [foremost_cmd, "-o", output_dir, "-q", "-T"]
     if file_types and file_types != "all":
         cmd.extend(["-t", file_types])
@@ -990,9 +1239,13 @@ async def _handle_carve(args: dict) -> list[TextContent]:
     if Path(output_dir).exists():
         for f in Path(output_dir).rglob("*"):
             if f.is_file() and f.stat().st_size > 0:
-                carved_files.append({
-                    "path": str(f), "size": f.stat().st_size, "name": f.name,
-                })
+                carved_files.append(
+                    {
+                        "path": str(f),
+                        "size": f.stat().st_size,
+                        "name": f.name,
+                    }
+                )
 
     # foremost returns non-zero exit code even on success (finds files)
     # Treat as success if we found carved files OR if exit code was 0
@@ -1001,23 +1254,39 @@ async def _handle_carve(args: dict) -> list[TextContent]:
     has_real_error = bool(result["stderr"]) and not carved_ok
 
     if has_real_error:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"foremost failed: {result['stderr'][:2000]}",
-            "returncode": result["returncode"],
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"foremost failed: {result['stderr'][:2000]}",
+                        "returncode": result["returncode"],
+                    }
+                ),
+            )
+        ]
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": True,
-        "output_dir": output_dir,
-        "carved_files": len(carved_files),
-        "files": carved_files[:100],
-        "raw_output": result["stdout"][:10000],
-        "duration_ms": result["duration_ms"],
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": True,
+                    "output_dir": output_dir,
+                    "carved_files": len(carved_files),
+                    "files": carved_files[:100],
+                    "raw_output": result["stdout"][:10000],
+                    "duration_ms": result["duration_ms"],
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ── YARA Handler ─────────────────────────────────────────────────
+
 
 async def _handle_yara(args: dict) -> list[TextContent]:
     """Scan with YARA rules."""
@@ -1025,18 +1294,32 @@ async def _handle_yara(args: dict) -> list[TextContent]:
     rules = args.get("rules", "")
 
     if not rules or not rules.strip():
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Empty YARA rules. Provide valid YARA rule content.",
-            "suggestion": "Example: 'rule test { strings: $a = \"malware\" condition: $a }'",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Empty YARA rules. Provide valid YARA rule content.",
+                        "suggestion": "Example: 'rule test { strings: $a = \"malware\" condition: $a }'",
+                    }
+                ),
+            )
+        ]
 
     if "rule " not in rules:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Invalid YARA rules syntax. Rules must contain at least one 'rule' definition.",
-            "suggestion": "Format: rule name { strings: $a = \"pattern\" condition: $a }",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Invalid YARA rules syntax. Rules must contain at least one 'rule' definition.",
+                        "suggestion": 'Format: rule name { strings: $a = "pattern" condition: $a }',
+                    }
+                ),
+            )
+        ]
 
     err = _validate_evidence_path(target)
     if err:
@@ -1044,20 +1327,38 @@ async def _handle_yara(args: dict) -> list[TextContent]:
 
     # Write rules to temp file
     try:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yara", delete=False, encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yara", delete=False, encoding="utf-8"
+        ) as f:
             f.write(rules)
             rules_path = f.name
     except Exception as e:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False, "error": f"Failed to write YARA rules: {e}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Failed to write YARA rules: {e}",
+                    }
+                ),
+            )
+        ]
 
     try:
         yara_cmd = _find_tool("yara")
         if not Path(yara_cmd).exists():
-            return [TextContent(type="text", text=json.dumps({
-                "success": False, "error": "yara not found. Install: sudo apt-get install yara",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": "yara not found. Install: sudo apt-get install yara",
+                        }
+                    ),
+                )
+            ]
 
         cmd = [yara_cmd, "-w", rules_path, target]
         result = await _run_tool(cmd)
@@ -1073,19 +1374,39 @@ async def _handle_yara(args: dict) -> list[TextContent]:
 
         is_clean = len(matches) == 0
 
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "matches": matches,
-            "match_count": len(matches),
-            "clean": is_clean,
-            "message": "No YARA matches found (clean)" if is_clean else f"Found {len(matches)} YARA match(es)",
-            "rules_used": rules[:500],
-            "duration_ms": result["duration_ms"],
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "matches": matches,
+                        "match_count": len(matches),
+                        "clean": is_clean,
+                        "message": (
+                            "No YARA matches found (clean)"
+                            if is_clean
+                            else f"Found {len(matches)} YARA match(es)"
+                        ),
+                        "rules_used": rules[:500],
+                        "duration_ms": result["duration_ms"],
+                    },
+                    indent=2,
+                ),
+            )
+        ]
     except Exception as e:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False, "error": f"YARA scan failed: {e}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"YARA scan failed: {e}",
+                    }
+                ),
+            )
+        ]
     finally:
         try:
             os.unlink(rules_path)
@@ -1094,6 +1415,7 @@ async def _handle_yara(args: dict) -> list[TextContent]:
 
 
 # ── Hash Handler ────────────────────────────────────────────────
+
 
 async def _handle_hash(args: dict) -> list[TextContent]:
     """Compute file hash."""
@@ -1113,36 +1435,66 @@ async def _handle_hash(args: dict) -> list[TextContent]:
 
     hash_bin = hash_cmd_map.get(algorithm)
     if not hash_bin:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Unsupported algorithm: {algorithm}. Use: md5, sha1, sha256, sha512",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Unsupported algorithm: {algorithm}. Use: md5, sha1, sha256, sha512",
+                    }
+                ),
+            )
+        ]
 
     if not Path(hash_bin).exists():
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"{hash_bin} not found. Install coreutils: sudo apt-get install coreutils",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"{hash_bin} not found. Install coreutils: sudo apt-get install coreutils",
+                    }
+                ),
+            )
+        ]
 
     result = await _run_tool([hash_bin, file_path])
 
     if result["success"]:
         hash_value = result["stdout"].split()[0] if result["stdout"] else ""
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "algorithm": algorithm,
-            "hash": hash_value,
-            "file": file_path,
-            "duration_ms": result["duration_ms"],
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "algorithm": algorithm,
+                        "hash": hash_value,
+                        "file": file_path,
+                        "duration_ms": result["duration_ms"],
+                    },
+                    indent=2,
+                ),
+            )
+        ]
     else:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Hash failed: {result['stderr'] or 'Unknown error'}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Hash failed: {result['stderr'] or 'Unknown error'}",
+                    }
+                ),
+            )
+        ]
 
 
 # ── Evidence List Handler ───────────────────────────────────────
+
 
 async def _handle_list_evidence(args: dict) -> list[TextContent]:
     """List available evidence."""
@@ -1152,70 +1504,106 @@ async def _handle_list_evidence(args: dict) -> list[TextContent]:
     if subdir:
         safe_path = _safe_path_join(EVIDENCE_ROOT, subdir)
         if safe_path is None:
-            return [TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": f"Invalid subdirectory: '{subdir}'. Path traversal not allowed.",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": f"Invalid subdirectory: '{subdir}'. Path traversal not allowed.",
+                        }
+                    ),
+                )
+            ]
         target_dir = safe_path
     else:
         target_dir = EVIDENCE_ROOT
 
     if not target_dir.exists():
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Directory does not exist: {target_dir}",
-            "suggestion": "Create it: mkdir -p /evidence/{disk,memory,network,cases}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Directory does not exist: {target_dir}",
+                        "suggestion": "Create it: mkdir -p /evidence/{disk,memory,network,cases}",
+                    }
+                ),
+            )
+        ]
 
     files = []
     try:
         for f in sorted(target_dir.iterdir(), key=lambda x: (not x.is_dir(), x.name)):
             try:
                 stat = f.stat()
-                files.append({
-                    "name": f.name,
-                    "type": "directory" if f.is_dir() else "file",
-                    "size": stat.st_size if f.is_file() else 0,
-                    "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-                })
+                files.append(
+                    {
+                        "name": f.name,
+                        "type": "directory" if f.is_dir() else "file",
+                        "size": stat.st_size if f.is_file() else 0,
+                        "modified": datetime.fromtimestamp(
+                            stat.st_mtime, tz=timezone.utc
+                        ).isoformat(),
+                    }
+                )
             except (OSError, PermissionError):
-                files.append({
-                    "name": f.name,
-                    "type": "unknown",
-                    "size": 0,
-                    "error": "Cannot read metadata",
-                })
+                files.append(
+                    {
+                        "name": f.name,
+                        "type": "unknown",
+                        "size": 0,
+                        "error": "Cannot read metadata",
+                    }
+                )
     except PermissionError:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": f"Permission denied reading {target_dir}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Permission denied reading {target_dir}",
+                    }
+                ),
+            )
+        ]
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": True,
-        "path": str(target_dir),
-        "file_count": len(files),
-        "files": files,
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": True,
+                    "path": str(target_dir),
+                    "file_count": len(files),
+                    "files": files,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ── Memory Forensics Handlers ─────────────────────────────────────
 
+
 def _is_memory_capture(path: str) -> bool:
     """Detect if a file is a memory capture via magic bytes and extension.
-    
+
     Strict checking to prevent misidentification of non-memory files:
     - ELF headers require additional content checks
     - gzip/compressed files are rejected (too common in non-memory files)
     - Extensions must match known memory capture suffixes
     """
     try:
-        with open(path, 'rb') as f:
+        with open(path, "rb") as f:
             raw = f.read(64)
             if len(raw) < 4:
                 return False
         # ELF binary — check for additional memory capture signatures
-        if raw[:4] == b'\x7fELF':
+        if raw[:4] == b"\x7fELF":
             # Linux memory dumps (LiME, avml) produce ELF core dumps
             # Check for additional evidence: size > 10MB and ELF type is ET_CORE
             try:
@@ -1223,22 +1611,22 @@ def _is_memory_capture(path: str) -> bool:
                 if size < 10 * 1024 * 1024:  # < 10MB is unlikely to be a memory dump
                     return False
                 # Check ELF type at offset 16 (2 bytes)
-                elf_type = int.from_bytes(raw[16:18], 'little') if len(raw) >= 18 else 0
+                elf_type = int.from_bytes(raw[16:18], "little") if len(raw) >= 18 else 0
                 if elf_type == 4:  # ET_CORE
                     return True
                 return True  # Accept ELF as potential memory dump
             except Exception:
                 return True  # Conservative: accept ELF
         # Windows memory dumps have PAGE header
-        if raw[:4] == b'PAGE':
+        if raw[:4] == b"PAGE":
             return True
         # Check for memory capture strings in header
-        if b'VMem' in raw or b'vmem' in raw:
+        if b"VMem" in raw or b"vmem" in raw:
             return True
     except Exception:
         pass
     # Strict extension check
-    mem_extensions = {'.mem', '.vmem', '.dump', '.dmp', '.core', '.elf', '.crash', '.raw'}
+    mem_extensions = {".mem", ".vmem", ".dump", ".dmp", ".core", ".elf", ".crash", ".raw"}
     ext = Path(path).suffix.lower()
     if ext not in mem_extensions:
         return False
@@ -1257,19 +1645,42 @@ async def _handle_mem_analyze(args: dict) -> list[TextContent]:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
     if not _is_memory_capture(mem_path):
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Not a recognized memory capture file",
-            "suggestion": "This tool requires a memory dump (.mem, .vmem, .dmp, .elf, .core, .raw)",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Not a recognized memory capture file",
+                        "suggestion": "This tool requires a memory dump (.mem, .vmem, .dmp, .elf, .core, .raw)",
+                    }
+                ),
+            )
+        ]
     result = mem_analyze(mem_path, plugin, use_fallback=True)
-    return [TextContent(type="text", text=json.dumps({
-        "success": result.success,
-        "plugin": result.plugin,
-        "data": result.data,
-        "error": result.error,
-        "note": result.data[0].get("note", "") if result.data and isinstance(result.data[0], dict) else "",
-    } if result.success else {"success": False, "error": result.error}, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                (
+                    {
+                        "success": result.success,
+                        "plugin": result.plugin,
+                        "data": result.data,
+                        "error": result.error,
+                        "note": (
+                            result.data[0].get("note", "")
+                            if result.data and isinstance(result.data[0], dict)
+                            else ""
+                        ),
+                    }
+                    if result.success
+                    else {"success": False, "error": result.error}
+                ),
+                indent=2,
+            ),
+        )
+    ]
 
 
 async def _handle_mem_list_processes(args: dict) -> list[TextContent]:
@@ -1279,19 +1690,42 @@ async def _handle_mem_list_processes(args: dict) -> list[TextContent]:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
     if not _is_memory_capture(mem_path):
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Not a memory capture file",
-            "suggestion": "Use a memory dump (.mem, .vmem, .dmp, etc.)",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Not a memory capture file",
+                        "suggestion": "Use a memory dump (.mem, .vmem, .dmp, etc.)",
+                    }
+                ),
+            )
+        ]
     result = list_processes(mem_path)
-    return [TextContent(type="text", text=json.dumps({
-        "success": result.success,
-        "plugin": result.plugin,
-        "data": result.data,
-        "error": result.error,
-        "note": result.data[0].get("note", "") if result.data and isinstance(result.data[0], dict) else "",
-    } if result.success else {"success": False, "error": result.error}, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                (
+                    {
+                        "success": result.success,
+                        "plugin": result.plugin,
+                        "data": result.data,
+                        "error": result.error,
+                        "note": (
+                            result.data[0].get("note", "")
+                            if result.data and isinstance(result.data[0], dict)
+                            else ""
+                        ),
+                    }
+                    if result.success
+                    else {"success": False, "error": result.error}
+                ),
+                indent=2,
+            ),
+        )
+    ]
 
 
 async def _handle_mem_scan_network(args: dict) -> list[TextContent]:
@@ -1301,17 +1735,36 @@ async def _handle_mem_scan_network(args: dict) -> list[TextContent]:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
     if not _is_memory_capture(mem_path):
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Not a memory capture file",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Not a memory capture file",
+                    }
+                ),
+            )
+        ]
     result = scan_network(mem_path)
-    return [TextContent(type="text", text=json.dumps({
-        "success": result.success,
-        "plugin": result.plugin,
-        "data": result.data,
-        "error": result.error,
-    } if result.success else {"success": False, "error": result.error}, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                (
+                    {
+                        "success": result.success,
+                        "plugin": result.plugin,
+                        "data": result.data,
+                        "error": result.error,
+                    }
+                    if result.success
+                    else {"success": False, "error": result.error}
+                ),
+                indent=2,
+            ),
+        )
+    ]
 
 
 async def _handle_mem_dump_cmdline(args: dict) -> list[TextContent]:
@@ -1321,26 +1774,46 @@ async def _handle_mem_dump_cmdline(args: dict) -> list[TextContent]:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
     if not _is_memory_capture(mem_path):
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Not a memory capture file",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Not a memory capture file",
+                    }
+                ),
+            )
+        ]
     result = dump_cmdline(mem_path)
-    return [TextContent(type="text", text=json.dumps({
-        "success": result.success,
-        "plugin": result.plugin,
-        "data": result.data,
-        "error": result.error,
-    } if result.success else {"success": False, "error": result.error}, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                (
+                    {
+                        "success": result.success,
+                        "plugin": result.plugin,
+                        "data": result.data,
+                        "error": result.error,
+                    }
+                    if result.success
+                    else {"success": False, "error": result.error}
+                ),
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ── Registry Forensics Handlers ──────────────────────────────────
 
+
 def _is_registry_hive(path: str) -> bool:
     """Check if a file is a Windows Registry hive via 'regf' magic bytes."""
     try:
-        with open(path, 'rb') as f:
-            return f.read(4) == b'regf'
+        with open(path, "rb") as f:
+            return f.read(4) == b"regf"
     except Exception:
         return False
 
@@ -1355,25 +1828,43 @@ async def _handle_reg_analyze(args: dict) -> list:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
     if not Path(hive_path).exists():
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Specified file does not exist in evidence directory",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Specified file does not exist in evidence directory",
+                    }
+                ),
+            )
+        ]
 
     if not _is_registry_hive(hive_path):
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Not a Registry hive file",
-            "suggestion": "This tool requires a Windows Registry hive file. Look for files named SAM, SYSTEM, SOFTWARE, SECURITY, NTUSER.DAT",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Not a Registry hive file",
+                        "suggestion": "This tool requires a Windows Registry hive file. Look for files named SAM, SYSTEM, SOFTWARE, SECURITY, NTUSER.DAT",
+                    }
+                ),
+            )
+        ]
 
     try:
         from regipy import RegistryHive
+
         hive = RegistryHive(hive_path)
         result_data = []
         try:
             for entry in hive.recurse_subkeys(key):
-                entry_data = {"path": entry.path, "timestamp": str(entry.timestamp) if entry.timestamp else None}
+                entry_data = {
+                    "path": entry.path,
+                    "timestamp": str(entry.timestamp) if entry.timestamp else None,
+                }
                 try:
                     values = {}
                     for v in getattr(entry, "values", []):
@@ -1389,38 +1880,72 @@ async def _handle_reg_analyze(args: dict) -> list:
                     break
         except Exception as e:
             # Key may not exist
-            return [TextContent(type="text", text=json.dumps({
-                "success": False,
-                "error": f"Registry key not found: {key}. Error: {e}",
-                "suggestion": "Try '/' to list all top-level keys, or a standard path like '/Microsoft/Windows/CurrentVersion/Run'",
-            }))]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "success": False,
+                            "error": f"Registry key not found: {key}. Error: {e}",
+                            "suggestion": "Try '/' to list all top-level keys, or a standard path like '/Microsoft/Windows/CurrentVersion/Run'",
+                        }
+                    ),
+                )
+            ]
 
-        return [TextContent(type="text", text=json.dumps({
-            "success": True, "hive": hive_path, "key_path": key,
-            "key_count": len(result_data), "keys": result_data[:200],
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "hive": hive_path,
+                        "key_path": key,
+                        "key_count": len(result_data),
+                        "keys": result_data[:200],
+                    },
+                    indent=2,
+                ),
+            )
+        ]
     except ImportError:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "regipy not installed. Install: pip install regipy",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "regipy not installed. Install: pip install regipy",
+                    }
+                ),
+            )
+        ]
     except Exception as e:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False, "error": f"Registry analysis failed: {e}",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Registry analysis failed: {e}",
+                    }
+                ),
+            )
+        ]
 
 
 # ── Network Forensics Handlers ───────────────────────────────────
 
+
 def _is_pcap(path: str) -> bool:
     """Check if a file is a PCAP via magic bytes or extension."""
-    pcap_extensions = {'.pcap', '.pcapng', '.cap'}
+    pcap_extensions = {".pcap", ".pcapng", ".cap"}
     if Path(path).suffix.lower() in pcap_extensions:
         return True
     try:
-        with open(path, 'rb') as f:
+        with open(path, "rb") as f:
             header = f.read(4)
-        return header in (b'\xd4\xc3\xb2\xa1', b'\x0a\x0d\x0d\x0a', b'\xa1\xb2\xc3\xd4')
+        return header in (b"\xd4\xc3\xb2\xa1", b"\x0a\x0d\x0d\x0a", b"\xa1\xb2\xc3\xd4")
     except Exception:
         return False
 
@@ -1436,18 +1961,32 @@ async def _handle_pcap_analyze(args: dict) -> list:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
     if not _is_pcap(pcap_path):
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Not a packet capture file",
-            "suggestion": "Use a PCAP/PCAPNG file",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Not a packet capture file",
+                        "suggestion": "Use a PCAP/PCAPNG file",
+                    }
+                ),
+            )
+        ]
 
     tshark_cmd = _find_tool("tshark")
     if not Path(tshark_cmd).exists():
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "tshark not found. Install: sudo apt-get install tshark",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "tshark not found. Install: sudo apt-get install tshark",
+                    }
+                ),
+            )
+        ]
 
     # Main packet extraction
     cmd = [tshark_cmd, "-r", pcap_path, "-T", "json"]
@@ -1468,13 +2007,15 @@ async def _handle_pcap_analyze(args: dict) -> list:
             parsed = json.loads(result["stdout"])
             for p in (parsed if isinstance(parsed, list) else [parsed]):
                 layers = p.get("_source", {}).get("layers", {})
-                packets.append({
-                    "frame": _get_layer(layers, "frame.number", ""),
-                    "src": _get_layer(layers, "ip.src", ""),
-                    "dst": _get_layer(layers, "ip.dst", ""),
-                    "protocol": _get_layer(layers, "frame.protocols", ""),
-                    "info": _get_layer(layers, "_ws.col.Info", ""),
-                })
+                packets.append(
+                    {
+                        "frame": _get_layer(layers, "frame.number", ""),
+                        "src": _get_layer(layers, "ip.src", ""),
+                        "dst": _get_layer(layers, "ip.dst", ""),
+                        "protocol": _get_layer(layers, "frame.protocols", ""),
+                        "info": _get_layer(layers, "_ws.col.Info", ""),
+                    }
+                )
         except json.JSONDecodeError:
             packets.append({"raw": result["stdout"][:5000]})
 
@@ -1486,15 +2027,25 @@ async def _handle_pcap_analyze(args: dict) -> list:
     conv_cmd = [tshark_cmd, "-r", pcap_path, "-z", "conv,ip", "-q"]
     conv_result = await _run_tool(conv_cmd, timeout=60)
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": True,
-        "pcap": pcap_path,
-        "packet_count": len(packets),
-        "packets": packets[:100],
-        "protocol_hierarchy": proto_result["stdout"][:5000] if proto_result["success"] else "",
-        "conversations": conv_result["stdout"][:3000] if conv_result["success"] else "",
-        "duration_ms": result["duration_ms"],
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": True,
+                    "pcap": pcap_path,
+                    "packet_count": len(packets),
+                    "packets": packets[:100],
+                    "protocol_hierarchy": (
+                        proto_result["stdout"][:5000] if proto_result["success"] else ""
+                    ),
+                    "conversations": conv_result["stdout"][:3000] if conv_result["success"] else "",
+                    "duration_ms": result["duration_ms"],
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 def _get_layer(layers: dict, key: str, default: str = "") -> str:
@@ -1512,22 +2063,38 @@ async def _handle_pcap_protocols(args: dict) -> list[TextContent]:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
     if not _is_pcap(pcap_path):
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Not a packet capture file",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Not a packet capture file",
+                    }
+                ),
+            )
+        ]
 
     tshark_cmd = _find_tool("tshark")
     result = await _run_tool([tshark_cmd, "-r", pcap_path, "-z", "io,phs", "-q"], timeout=60)
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": result["success"],
-        "protocols": result["stdout"][:10000] if result["success"] else "",
-        "error": result.get("stderr", "") if not result["success"] else None,
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": result["success"],
+                    "protocols": result["stdout"][:10000] if result["success"] else "",
+                    "error": result.get("stderr", "") if not result["success"] else None,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ── Timeline Analysis Handlers ───────────────────────────────────
+
 
 async def _handle_timeline_build(args: dict) -> list:
     source_path = args.get("source_path", "")
@@ -1539,13 +2106,21 @@ async def _handle_timeline_build(args: dict) -> list:
 
     result = timeline_build(source_path, output_path or None)
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": result.success,
-        "storage_path": result.storage_path,
-        "source": source_path,
-        "error": result.error,
-        "event_count": result.event_count,
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": result.success,
+                    "storage_path": result.storage_path,
+                    "source": source_path,
+                    "error": result.error,
+                    "event_count": result.event_count,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 async def _handle_timeline_filter(args: dict) -> list:
@@ -1559,12 +2134,20 @@ async def _handle_timeline_filter(args: dict) -> list:
 
     result = filter_timeline(storage_path, query, output_format)
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": result.success,
-        "event_count": result.event_count,
-        "events": result.data[:500],
-        "error": result.error,
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": result.success,
+                    "event_count": result.event_count,
+                    "events": result.data[:500],
+                    "error": result.error,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 async def _handle_extract_features(args: dict) -> list:
@@ -1577,20 +2160,29 @@ async def _handle_extract_features(args: dict) -> list:
 
     result = carve_extract_features(image_path, scanners)
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": result.success,
-        "output_dir": result.output_dir,
-        "feature_files": result.file_count,
-        "details": result.data,
-        "error": result.error,
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": result.success,
+                    "output_dir": result.output_dir,
+                    "feature_files": result.file_count,
+                    "details": result.data,
+                    "error": result.error,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ── Accuracy Benchmark Handler ───────────────────────────────────
 
+
 async def _handle_benchmark(args: dict) -> list[TextContent]:
     """Compare agent findings against known ground truth.
-    
+
     Expects ground_truth as JSON array of finding objects with:
     - type: finding type string
     - description: description text (used for matching)
@@ -1606,15 +2198,28 @@ async def _handle_benchmark(args: dict) -> list[TextContent]:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
     try:
-        ground_truth = json.loads(ground_truth_str) if isinstance(ground_truth_str, str) else ground_truth_str
+        ground_truth = (
+            json.loads(ground_truth_str) if isinstance(ground_truth_str, str) else ground_truth_str
+        )
     except json.JSONDecodeError:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False,
-            "error": "Invalid ground truth JSON. Provide a valid JSON array of expected findings.",
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "Invalid ground truth JSON. Provide a valid JSON array of expected findings.",
+                    }
+                ),
+            )
+        ]
 
     try:
-        agent_findings = json.loads(agent_findings_str) if isinstance(agent_findings_str, str) else agent_findings_str
+        agent_findings = (
+            json.loads(agent_findings_str)
+            if isinstance(agent_findings_str, str)
+            else agent_findings_str
+        )
     except json.JSONDecodeError:
         agent_findings = []
 
@@ -1642,8 +2247,16 @@ async def _handle_benchmark(args: dict) -> list[TextContent]:
     false_negatives = len(gt_types - af_types)
 
     # Precision, Recall, F1
-    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
-    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
+    precision = (
+        true_positives / (true_positives + false_positives)
+        if (true_positives + false_positives) > 0
+        else 0.0
+    )
+    recall = (
+        true_positives / (true_positives + false_negatives)
+        if (true_positives + false_negatives) > 0
+        else 0.0
+    )
     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
     # Grade
@@ -1658,49 +2271,74 @@ async def _handle_benchmark(args: dict) -> list[TextContent]:
     else:
         grade = "F (Failing)"
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": True,
-        "benchmark": {
-            "evidence": evidence_path,
-            "ground_truth_count": len(ground_truth),
-            "agent_findings_count": len(agent_findings),
-            "metrics": {
-                "true_positives": true_positives,
-                "false_positives": false_positives,
-                "false_negatives": false_negatives,
-                "precision": round(precision, 4),
-                "recall": round(recall, 4),
-                "f1_score": round(f1_score, 4),
-                "detection_threshold": detection_threshold,
-            },
-            "grade": grade,
-            "ground_truth_types": sorted(list(gt_types)),
-            "agent_detected_types": sorted(list(af_types)),
-            "missed_types": sorted(list(gt_types - af_types)),
-            "false_positive_types": sorted(list(af_types - gt_types)),
-            "benchmark_timestamp": datetime.now(timezone.utc).isoformat(),
-        },
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": True,
+                    "benchmark": {
+                        "evidence": evidence_path,
+                        "ground_truth_count": len(ground_truth),
+                        "agent_findings_count": len(agent_findings),
+                        "metrics": {
+                            "true_positives": true_positives,
+                            "false_positives": false_positives,
+                            "false_negatives": false_negatives,
+                            "precision": round(precision, 4),
+                            "recall": round(recall, 4),
+                            "f1_score": round(f1_score, 4),
+                            "detection_threshold": detection_threshold,
+                        },
+                        "grade": grade,
+                        "ground_truth_types": sorted(list(gt_types)),
+                        "agent_detected_types": sorted(list(af_types)),
+                        "missed_types": sorted(list(gt_types - af_types)),
+                        "false_positive_types": sorted(list(af_types - gt_types)),
+                        "benchmark_timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ── Tool Config Handler ─────────────────────────────────────────
+
 
 async def _handle_get_tool_config(args: dict) -> list[TextContent]:
     """Return canonical tool configuration from config/tools.toml."""
     tool_name = args.get("tool_name", "")
     if not tool_name:
-        return [TextContent(type="text", text=json.dumps({
-            "success": False, "error": "tool_name is required",
-            "available_tools": list(_TOOL_CONFIG.keys()),
-        }))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "tool_name is required",
+                        "available_tools": list(_TOOL_CONFIG.keys()),
+                    }
+                ),
+            )
+        ]
 
     cfg = _tool_config(tool_name)
     if cfg:
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "tool": tool_name,
-            "config": cfg,
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "tool": tool_name,
+                        "config": cfg,
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
     # Fallback to built-in known tools
     builtin_info = {
@@ -1714,55 +2352,82 @@ async def _handle_get_tool_config(args: dict) -> list[TextContent]:
     }
     info = builtin_info.get(tool_name)
     if info:
-        return [TextContent(type="text", text=json.dumps({
-            "success": True,
-            "tool": tool_name,
-            "config": info,
-            "source": "built-in (not in tools.toml)",
-        }, indent=2))]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "success": True,
+                        "tool": tool_name,
+                        "config": info,
+                        "source": "built-in (not in tools.toml)",
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
-    return [TextContent(type="text", text=json.dumps({
-        "success": False,
-        "error": f"Unknown tool: {tool_name}",
-        "known_tools": list(builtin_info.keys()) + list(_TOOL_CONFIG.keys()),
-    }))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": False,
+                    "error": f"Unknown tool: {tool_name}",
+                    "known_tools": list(builtin_info.keys()) + list(_TOOL_CONFIG.keys()),
+                }
+            ),
+        )
+    ]
 
 
 # ── Audit Log Handler ────────────────────────────────────────────
+
 
 async def _handle_audit_logs(args: dict) -> list[TextContent]:
     """Return audit logs from current session."""
     limit = min(args.get("limit", 100), 10000)
     logs = _get_audit_logs()[-limit:]
-    return [TextContent(type="text", text=json.dumps({
-        "success": True,
-        "session_log_path": str(_audit_log_path) if _audit_entries else "",
-        "total_entries": len(_get_audit_logs()),
-        "entries": logs,
-    }, indent=2))]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": True,
+                    "session_log_path": str(_audit_log_path) if _audit_entries else "",
+                    "total_entries": len(_get_audit_logs()),
+                    "entries": logs,
+                },
+                indent=2,
+            ),
+        )
+    ]
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  SERVER ENTRYPOINT
 # ═══════════════════════════════════════════════════════════════════
 
+
 async def main():
     """Start the MCP server with graceful shutdown handling."""
     logger.info(f"Starting {SERVER_NAME} v{SERVER_VERSION}")
     logger.info(f"Evidence root: {EVIDENCE_ROOT}")
     logger.info(f"Results root: {RESULTS_ROOT}")
-    logger.info(f"21 forensic tools registered")
+    logger.info("21 forensic tools registered")
 
     # Ensure directories exist
     try:
         EVIDENCE_ROOT.mkdir(parents=True, exist_ok=True)
         RESULTS_ROOT.mkdir(parents=True, exist_ok=True)
-        for sub in ('disk', 'memory', 'network', 'cases'):
+        for sub in ("disk", "memory", "network", "cases"):
             (EVIDENCE_ROOT / sub).mkdir(exist_ok=True)
-        for sub in ('audit', 'carved', 'timelines', 'reports'):
+        for sub in ("audit", "carved", "timelines", "reports"):
             (RESULTS_ROOT / sub).mkdir(exist_ok=True)
     except PermissionError:
-        logger.warning(f"Cannot create directories. Ensure {EVIDENCE_ROOT} and {RESULTS_ROOT} exist.")
+        logger.warning(
+            f"Cannot create directories. Ensure {EVIDENCE_ROOT} and {RESULTS_ROOT} exist."
+        )
 
     # Signal handling for graceful shutdown
     shutdown_event = asyncio.Event()

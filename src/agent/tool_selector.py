@@ -86,10 +86,12 @@ TOOL_REGISTRY = {
     ],
 }
 
+
 def suggest_next_tools(phase: str, previous_results: dict = None) -> list:
     """Suggest appropriate tools based on analysis phase."""
     tools = TOOL_REGISTRY.get(phase, [])
     return sorted(tools, key=lambda t: t["priority"])
+
 
 def get_tool_for_artifact(artifact_type: str) -> str:
     """Get the best tool for analyzing a specific artifact type."""
@@ -117,6 +119,7 @@ def get_tool_for_artifact(artifact_type: str) -> str:
         "audit_trail": "get_audit_logs",
     }
     return artifact_tools.get(artifact_type, "fs_partition_scan")
+
 
 def get_fallback_chain(tool: str) -> list:
     """Get alternative tools when the primary tool fails."""

@@ -2,11 +2,13 @@
 Timeline Analysis Tools
 Wraps log2timeline/plaso via subprocess for forensic timeline generation.
 """
-import subprocess
+
 import json
+import subprocess
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 
 class TimelineResult(BaseModel):
@@ -52,15 +54,20 @@ def build(source_path: str, output_path: Optional[str] = None) -> TimelineResult
         return TimelineResult(success=False, error=str(e))
 
 
-def filter_timeline(storage_path: str, query: str = "", output_format: str = "json") -> TimelineResult:
+def filter_timeline(
+    storage_path: str, query: str = "", output_format: str = "json"
+) -> TimelineResult:
     """Filter and export a Plaso timeline using psort."""
     try:
         if output_format == "json":
             output_path = storage_path.replace(".plaso", "_filtered.json")
             cmd = [
-                "psort", "-q",
-                "-o", "json",
-                "--output_file", output_path,
+                "psort",
+                "-q",
+                "-o",
+                "json",
+                "--output_file",
+                output_path,
                 storage_path,
             ]
             if query:
@@ -84,8 +91,15 @@ def filter_timeline(storage_path: str, query: str = "", output_format: str = "js
                 data=events[:1000],
             )
         else:
-            cmd = ["psort", "-q", "-o", "dynamic", "--output_file",
-                   storage_path.replace(".plaso", "_filtered.csv"), storage_path]
+            cmd = [
+                "psort",
+                "-q",
+                "-o",
+                "dynamic",
+                "--output_file",
+                storage_path.replace(".plaso", "_filtered.csv"),
+                storage_path,
+            ]
             if query:
                 cmd.extend(["--slice", query])
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -98,6 +112,8 @@ def filter_timeline(storage_path: str, query: str = "", output_format: str = "js
     except subprocess.TimeoutExpired:
         return TimelineResult(success=False, error="Timeline filter timed out after 300s")
     except FileNotFoundError:
-        return TimelineResult(success=False, error="psort not found. Install plaso: pip install plaso")
+        return TimelineResult(
+            success=False, error="psort not found. Install plaso: pip install plaso"
+        )
     except Exception as e:
         return TimelineResult(success=False, error=str(e))

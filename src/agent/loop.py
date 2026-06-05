@@ -2,24 +2,24 @@
 Self-Correcting DFIR Agent Loop with Groq LLM integration.
 Implements the ReAct pattern: Reason → Act → Observe → Correct → Report
 """
+
 import asyncio
 import json
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .groq_client import GroqDFIRClient
-from .output_parser import parse_tool_decision, parse_report
-from .prompts import DFIR_ANALYST_PROMPT
-from .tool_selector import suggest_next_tools, get_tool_for_artifact, get_fallback_chain
+from .output_parser import parse_report
+from .tool_selector import suggest_next_tools
 
 logger = logging.getLogger("findevil-agent")
 
 
 class ToolCall:
     """Record of a single tool execution."""
+
     def __init__(self, tool: str, arguments: dict, iteration: int):
         self.tool = tool
         self.arguments = arguments
@@ -117,10 +117,20 @@ class DFIRWorkflow:
 
     # Default tool chains per phase (used as fallback if LLM is unavailable)
     DEFAULT_TOOLS = {
-        "initial_triage": ["list_evidence", "verify_hash", "fs_partition_scan", "fs_filesystem_info"],
+        "initial_triage": [
+            "list_evidence",
+            "verify_hash",
+            "fs_partition_scan",
+            "fs_filesystem_info",
+        ],
         "filesystem_analysis": ["fs_list_files", "fs_file_metadata", "fs_extract_file"],
         "artifact_extraction": ["carve_files", "scan_yara"],
-        "memory_analysis": ["mem_list_processes", "mem_analyze", "mem_scan_network", "mem_dump_cmdline"],
+        "memory_analysis": [
+            "mem_list_processes",
+            "mem_analyze",
+            "mem_scan_network",
+            "mem_dump_cmdline",
+        ],
         "registry_analysis": ["reg_analyze_hive"],
         "network_analysis": ["pcap_analyze", "pcap_list_protocols"],
         "cross_reference": ["get_audit_logs", "verify_hash"],
@@ -154,16 +164,25 @@ class DFIRWorkflow:
 
         # Pre-validate evidence exists and is accessible (before any tool calls)
         if evidence_path:
-            import os as _os
             from pathlib import Path as _Path
+
             ev_path = _Path(evidence_path)
             if not ev_path.exists():
                 self.state.status = "aborted"
-                return self._build_result(json.dumps({
-                    "summary": "Evidence path does not exist",
-                    "findings": [{"type": "error", "description": f"Evidence not found: {evidence_path}"}],
-                    "errors": [f"Evidence path does not exist: {evidence_path}"],
-                }))
+                return self._build_result(
+                    json.dumps(
+                        {
+                            "summary": "Evidence path does not exist",
+                            "findings": [
+                                {
+                                    "type": "error",
+                                    "description": f"Evidence not found: {evidence_path}",
+                                }
+                            ],
+                            "errors": [f"Evidence path does not exist: {evidence_path}"],
+                        }
+                    )
+                )
             if ev_path.is_dir():
                 # For directories, check they're non-empty
                 try:
@@ -172,16 +191,31 @@ class DFIRWorkflow:
                         logger.warning(f"Evidence directory is empty: {evidence_path}")
                 except PermissionError:
                     self.state.status = "aborted"
-                    return self._build_result(json.dumps({
-                        "summary": "Cannot access evidence directory",
-                        "findings": [{"type": "error", "description": f"Permission denied: {evidence_path}"}],
-                    }))
+                    return self._build_result(
+                        json.dumps(
+                            {
+                                "summary": "Cannot access evidence directory",
+                                "findings": [
+                                    {
+                                        "type": "error",
+                                        "description": f"Permission denied: {evidence_path}",
+                                    }
+                                ],
+                            }
+                        )
+                    )
             elif ev_path.stat().st_size == 0:
                 self.state.status = "aborted"
-                return self._build_result(json.dumps({
-                    "summary": "Evidence file is empty",
-                    "findings": [{"type": "error", "description": f"Empty file: {evidence_path}"}],
-                }))
+                return self._build_result(
+                    json.dumps(
+                        {
+                            "summary": "Evidence file is empty",
+                            "findings": [
+                                {"type": "error", "description": f"Empty file: {evidence_path}"}
+                            ],
+                        }
+                    )
+                )
 
         # Log whether LLM is available
         if self.groq.available:
@@ -192,22 +226,24 @@ class DFIRWorkflow:
                 "Set GROQ_API_KEY for LLM-enhanced analysis."
             )
 
-        self.state.add_finding({
-            "type": "case_info",
-            "description": f"Case initiated: {task}",
-            "task": task,
-            "evidence": evidence_path,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "confidence": "CONFIRMED",
-        })
+        self.state.add_finding(
+            {
+                "type": "case_info",
+                "description": f"Case initiated: {task}",
+                "task": task,
+                "evidence": evidence_path,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "confidence": "CONFIRMED",
+            }
+        )
 
         for phase in self.PHASES:
             if self.state.status != "running":
                 break
             self.current_phase = phase
-            logger.info(f"━" * 60)
+            logger.info("━" * 60)
             logger.info(f"  PHASE: {phase}")
-            logger.info(f"━" * 60)
+            logger.info("━" * 60)
 
             if phase == "reporting":
                 break
@@ -224,7 +260,10 @@ class DFIRWorkflow:
     async def _execute_phase(self):
         """Execute a single analysis phase."""
         # Auto-detect partition offset
-        if self.current_phase in ("initial_triage", "filesystem_analysis") and self._detected_offset == 0:
+        if (
+            self.current_phase in ("initial_triage", "filesystem_analysis")
+            and self._detected_offset == 0
+        ):
             self._detected_offset = await self._detect_partition_offset()
 
         # Get tools for this phase
@@ -312,7 +351,9 @@ class DFIRWorkflow:
     async def _detect_partition_offset(self) -> int:
         """Auto-detect the data partition offset from a disk image."""
         try:
-            result = await self.client.call_tool("fs_partition_scan", {"image_path": self._evidence_path})
+            result = await self.client.call_tool(
+                "fs_partition_scan", {"image_path": self._evidence_path}
+            )
             if isinstance(result, str):
                 parsed = json.loads(result)
             else:
@@ -320,13 +361,21 @@ class DFIRWorkflow:
 
             if parsed.get("success"):
                 partitions = parsed.get("partitions", [])
-                excluded_descs = {"safety table", "gpt header", "partition table", "unallocated", "meta"}
+                excluded_descs = {
+                    "safety table",
+                    "gpt header",
+                    "partition table",
+                    "unallocated",
+                    "meta",
+                }
                 for p in partitions:
                     desc = p.get("description", "").strip().lower()
                     length = p.get("length", 0)
                     slot = p.get("slot", -1)
                     if slot >= 0 and desc not in excluded_descs and length > 100:
-                        logger.info(f"Auto-detected partition offset: {p.get('start', 0)} (slot {slot})")
+                        logger.info(
+                            f"Auto-detected partition offset: {p.get('start', 0)} (slot {slot})"
+                        )
                         return p.get("start", 0)
             return 0
         except Exception as e:
@@ -346,8 +395,15 @@ class DFIRWorkflow:
             "fs_list_files": {"image_path": ep, "offset": off},
             "fs_file_metadata": {"image_path": ep, "offset": off, "inode": 20},
             "fs_extract_file": {"image_path": ep, "offset": off, "inode": 20},
-            "carve_files": {"image_path": ep, "file_types": "all", "output_dir": "/results/carved/agent"},
-            "scan_yara": {"target": ep, "rules": "rule FindEvil { strings: $a = \"malware\" nocase condition: $a }"},
+            "carve_files": {
+                "image_path": ep,
+                "file_types": "all",
+                "output_dir": "/results/carved/agent",
+            },
+            "scan_yara": {
+                "target": ep,
+                "rules": 'rule FindEvil { strings: $a = "malware" nocase condition: $a }',
+            },
             "mem_analyze": {"memory_path": ep, "plugin": "windows.pslist.PsList"},
             "mem_list_processes": {"memory_path": ep},
             "mem_scan_network": {"memory_path": ep},
@@ -391,12 +447,24 @@ class DFIRWorkflow:
         # Tool: {field_to_check, min_meaningful_value, threshold_for_confirmed}
         "fs_partition_scan": {"field": "partition_count", "min_meaningful": 0, "confirmed_at": 1},
         "fs_list_files": {"field": "file_count", "min_meaningful": 0, "confirmed_at": 2},
-        "verify_hash": {"field": "hash", "min_meaningful": 1, "confirmed_at": 1},  # Any hash is meaningful
+        "verify_hash": {
+            "field": "hash",
+            "min_meaningful": 1,
+            "confirmed_at": 1,
+        },  # Any hash is meaningful
         "list_evidence": {"field": "file_count", "min_meaningful": 0, "confirmed_at": 1},
         "fs_filesystem_info": {"field": "fsstat_output", "min_meaningful": 10, "confirmed_at": 50},
-        "fs_extract_file": {"field": "size", "min_meaningful": 0, "confirmed_at": 1},  # Any extracted data
+        "fs_extract_file": {
+            "field": "size",
+            "min_meaningful": 0,
+            "confirmed_at": 1,
+        },  # Any extracted data
         "carve_files": {"field": "carved_files", "min_meaningful": 0, "confirmed_at": 1},
-        "scan_yara": {"field": "match_count", "min_meaningful": 1, "confirmed_at": 1},  # Matches are always notable
+        "scan_yara": {
+            "field": "match_count",
+            "min_meaningful": 1,
+            "confirmed_at": 1,
+        },  # Matches are always notable
         "mem_list_processes": {"field": "data", "min_meaningful": 1, "confirmed_at": 2},
         "mem_scan_network": {"field": "data", "min_meaningful": 1, "confirmed_at": 2},
         "mem_dump_cmdline": {"field": "data", "min_meaningful": 1, "confirmed_at": 2},
@@ -429,7 +497,9 @@ class DFIRWorkflow:
 
         # Get the "value" to score
         if field == "data":
-            value = len(raw_value) if isinstance(raw_value, (list, dict)) else (1 if raw_value else 0)
+            value = (
+                len(raw_value) if isinstance(raw_value, (list, dict)) else (1 if raw_value else 0)
+            )
         elif field in ("fsstat_output", "protocols", "storage_path"):
             value = len(str(raw_value)) if raw_value else 0
         else:
@@ -448,38 +518,88 @@ class DFIRWorkflow:
     def _extract_findings(self, tool_name: str, result: dict):
         """Extract structured findings from tool output with proper confidence scoring."""
         mapping = {
-            "fs_partition_scan": ("partition_table", lambda r: f"Found {r.get('partition_count', 0)} partitions"),
-            "fs_list_files": ("file_listing", lambda r: f"Listed {r.get('file_count', 0)} files/directories"),
-            "verify_hash": ("integrity_check", lambda r: f"Hash ({r.get('algorithm')}): {str(r.get('hash', ''))[:20]}..."),
-            "list_evidence": ("evidence_inventory", lambda r: f"Found {r.get('file_count', 0)} evidence files"),
+            "fs_partition_scan": (
+                "partition_table",
+                lambda r: f"Found {r.get('partition_count', 0)} partitions",
+            ),
+            "fs_list_files": (
+                "file_listing",
+                lambda r: f"Listed {r.get('file_count', 0)} files/directories",
+            ),
+            "verify_hash": (
+                "integrity_check",
+                lambda r: f"Hash ({r.get('algorithm')}): {str(r.get('hash', ''))[:20]}...",
+            ),
+            "list_evidence": (
+                "evidence_inventory",
+                lambda r: f"Found {r.get('file_count', 0)} evidence files",
+            ),
             "fs_filesystem_info": ("filesystem_info", lambda r: "Filesystem analysis complete"),
-            "fs_extract_file": ("file_extracted", lambda r: f"Extracted inode content ({r.get('size', 0)} bytes)"),
-            "carve_files": ("carving", lambda r: f"Carved {r.get('carved_files', r.get('file_count', 0))} files"),
+            "fs_extract_file": (
+                "file_extracted",
+                lambda r: f"Extracted inode content ({r.get('size', 0)} bytes)",
+            ),
+            "carve_files": (
+                "carving",
+                lambda r: f"Carved {r.get('carved_files', r.get('file_count', 0))} files",
+            ),
             "scan_yara": ("yara_scan", lambda r: f"Found {r.get('match_count', 0)} YARA matches"),
-            "mem_list_processes": ("process_list", lambda r: f"Found {len(r.get('data', []))} processes in memory"),
-            "mem_scan_network": ("network_connections", lambda r: f"Found {len(r.get('data', []))} network connections"),
-            "mem_dump_cmdline": ("cmdline", lambda r: f"Found {len(r.get('data', []))} command lines"),
-            "mem_analyze": ("memory_analysis", lambda r: f"Memory analysis: {r.get('plugin', 'unknown')} plugin"),
-            "reg_analyze_hive": ("registry_analysis", lambda r: f"Queried registry, found {r.get('key_count', 0)} keys"),
-            "pcap_analyze": ("network_traffic", lambda r: f"Analyzed {r.get('packet_count', 0)} packets"),
+            "mem_list_processes": (
+                "process_list",
+                lambda r: f"Found {len(r.get('data', []))} processes in memory",
+            ),
+            "mem_scan_network": (
+                "network_connections",
+                lambda r: f"Found {len(r.get('data', []))} network connections",
+            ),
+            "mem_dump_cmdline": (
+                "cmdline",
+                lambda r: f"Found {len(r.get('data', []))} command lines",
+            ),
+            "mem_analyze": (
+                "memory_analysis",
+                lambda r: f"Memory analysis: {r.get('plugin', 'unknown')} plugin",
+            ),
+            "reg_analyze_hive": (
+                "registry_analysis",
+                lambda r: f"Queried registry, found {r.get('key_count', 0)} keys",
+            ),
+            "pcap_analyze": (
+                "network_traffic",
+                lambda r: f"Analyzed {r.get('packet_count', 0)} packets",
+            ),
             "pcap_list_protocols": ("pcap_protocols", lambda r: "Extracted protocol hierarchy"),
-            "timeline_build": ("timeline", lambda r: f"Timeline built: {r.get('storage_path', 'N/A')}"),
-            "timeline_filter": ("timeline_events", lambda r: f"Found {r.get('event_count', 0)} timeline events"),
-            "extract_features": ("feature_extraction", lambda r: f"Extracted {r.get('feature_files', 0)} feature files"),
-            "get_audit_logs": ("audit_trail", lambda r: f"{r.get('total_entries', 0)} tool calls logged"),
+            "timeline_build": (
+                "timeline",
+                lambda r: f"Timeline built: {r.get('storage_path', 'N/A')}",
+            ),
+            "timeline_filter": (
+                "timeline_events",
+                lambda r: f"Found {r.get('event_count', 0)} timeline events",
+            ),
+            "extract_features": (
+                "feature_extraction",
+                lambda r: f"Extracted {r.get('feature_files', 0)} feature files",
+            ),
+            "get_audit_logs": (
+                "audit_trail",
+                lambda r: f"{r.get('total_entries', 0)} tool calls logged",
+            ),
         }
 
         if tool_name in mapping and result.get("success"):
             ftype, desc_fn = mapping[tool_name]
             desc = desc_fn(result)
             confidence = self._assess_confidence(tool_name, result)
-            self.state.add_finding({
-                "type": ftype,
-                "description": desc,
-                "confidence": confidence,
-                "tool": tool_name,
-                "details": result,
-            })
+            self.state.add_finding(
+                {
+                    "type": ftype,
+                    "description": desc,
+                    "confidence": confidence,
+                    "tool": tool_name,
+                    "details": result,
+                }
+            )
 
     async def _generate_report(self) -> str:
         """Generate the final report using Groq."""
@@ -507,7 +627,9 @@ class DFIRWorkflow:
         if self.state.findings:
             lines.append("## Key Findings\n")
             for f in self.state.findings:
-                lines.append(f"- **{f.get('type', 'finding')}** [{f.get('confidence', 'N/A')}]: {f.get('description', '')}")
+                lines.append(
+                    f"- **{f.get('type', 'finding')}** [{f.get('confidence', 'N/A')}]: {f.get('description', '')}"
+                )
 
         failed = [t for t in self.state.tool_calls if not t.success]
         if failed:
@@ -538,21 +660,31 @@ class SimpleMCPClient:
     async def start(self):
         """Start the MCP server as a subprocess."""
         import sys
+
         self.proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", self.server_module,
+            sys.executable,
+            "-m",
+            self.server_module,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
 
-        init = json.dumps({
-            "jsonrpc": "2.0", "id": 0, "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "findevil-agent", "version": "1.0"},
-            }
-        }) + "\n"
+        init = (
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 0,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "findevil-agent", "version": "1.0"},
+                    },
+                }
+            )
+            + "\n"
+        )
         self.proc.stdin.write(init.encode())
         await self.proc.stdin.drain()
         line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=10)
@@ -560,10 +692,17 @@ class SimpleMCPClient:
 
     async def call_tool(self, name: str, arguments: dict) -> dict:
         """Call an MCP tool and return the parsed result."""
-        msg = json.dumps({
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": name, "arguments": arguments},
-        }) + "\n"
+        msg = (
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": name, "arguments": arguments},
+                }
+            )
+            + "\n"
+        )
         self.proc.stdin.write(msg.encode())
         await self.proc.stdin.drain()
 
@@ -581,7 +720,11 @@ class SimpleMCPClient:
             # Try reading stderr for error info
             try:
                 stderr_output = await asyncio.wait_for(self.proc.stderr.readline(), timeout=2)
-                error_detail = stderr_output.decode() if isinstance(stderr_output, bytes) else str(stderr_output)
+                error_detail = (
+                    stderr_output.decode()
+                    if isinstance(stderr_output, bytes)
+                    else str(stderr_output)
+                )
             except Exception:
                 error_detail = ""
             return {
@@ -618,10 +761,17 @@ class SimpleMCPClient:
 
     async def list_tools(self) -> list:
         """List available MCP tools."""
-        msg = json.dumps({
-            "jsonrpc": "2.0", "id": 2, "method": "tools/list",
-            "params": {},
-        }) + "\n"
+        msg = (
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list",
+                    "params": {},
+                }
+            )
+            + "\n"
+        )
         self.proc.stdin.write(msg.encode())
         await self.proc.stdin.drain()
         line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=10)

@@ -1,6 +1,6 @@
 """Test the DFIR workflow agent loop."""
+
 import asyncio
-import json
 import sys
 from pathlib import Path
 
@@ -22,7 +22,7 @@ class TestDFIRWorkflow:
 
     async def _run_workflow(self, task: str, client_type: str = "standard") -> dict:
         """Run a workflow and return results."""
-        from src.agent.loop import SimpleMCPClient, DFIRWorkflow
+        from src.agent.loop import DFIRWorkflow, SimpleMCPClient
 
         client = SimpleMCPClient()
         try:
@@ -44,9 +44,7 @@ class TestDFIRWorkflow:
 
     async def test_workflow_full_phases(self):
         """Test all phases of the workflow."""
-        result = await self._run_workflow(
-            "Analyze forensic image for signs of compromise"
-        )
+        result = await self._run_workflow("Analyze forensic image for signs of compromise")
         assert result is not None
 
 
@@ -68,6 +66,7 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"\n  ❌ {name}: {e}")
                 import traceback
+
                 traceback.print_exc()
                 failed += 1
 

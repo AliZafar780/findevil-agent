@@ -1,9 +1,10 @@
 """
 Structured output extraction from tool results.
 """
+
 import json
 import re
-from typing import Any, Optional
+from typing import Optional
 
 
 def _extract_balanced_braces(text: str) -> list[str]:
@@ -12,14 +13,14 @@ def _extract_balanced_braces(text: str) -> list[str]:
     depth = 0
     start = -1
     for i, ch in enumerate(text):
-        if ch == '{':
+        if ch == "{":
             if depth == 0:
                 start = i
             depth += 1
-        elif ch == '}':
+        elif ch == "}":
             depth -= 1
             if depth == 0 and start >= 0:
-                candidate = text[start:i + 1]
+                candidate = text[start : i + 1]
                 results.append(candidate)
                 start = -1
     return results
@@ -34,7 +35,7 @@ def extract_json_from_text(text: str) -> Optional[dict]:
         pass
 
     # Try to find JSON in code blocks
-    code_block_pattern = r'```(?:json)?\s*\n(.*?)\n```'
+    code_block_pattern = r"```(?:json)?\s*\n(.*?)\n```"
     try:
         matches = re.findall(code_block_pattern, text, re.DOTALL)
         for m in matches:
@@ -76,18 +77,46 @@ def parse_tool_decision(text: str) -> list:
 
     # Fallback: extract tool names only from calling contexts
     tool_names = [
-        "fs_partition_scan", "fs_list_files", "fs_extract_file", "fs_file_metadata",
-        "fs_filesystem_info", "carve_files", "scan_yara", "verify_hash", "list_evidence",
-        "mem_analyze", "mem_list_processes", "mem_scan_network", "mem_dump_cmdline",
-        "reg_analyze_hive", "pcap_analyze", "pcap_list_protocols", "get_audit_logs",
+        "fs_partition_scan",
+        "fs_list_files",
+        "fs_extract_file",
+        "fs_file_metadata",
+        "fs_filesystem_info",
+        "carve_files",
+        "scan_yara",
+        "verify_hash",
+        "list_evidence",
+        "mem_analyze",
+        "mem_list_processes",
+        "mem_scan_network",
+        "mem_dump_cmdline",
+        "reg_analyze_hive",
+        "pcap_analyze",
+        "pcap_list_protocols",
+        "get_audit_logs",
     ]
 
     # Only match tool names preceded by action verbs suggesting tool invocation
     text_lower = text.lower()
     action_prefixes = [
-        "run ", "call ", "execute ", "use ", "try ", "next: ", "- ",
-        "* ", "1. ", "2. ", "3. ", "4. ", "5. ", "invoke ",
-        "suggest", "recommend", "should run", "will use",
+        "run ",
+        "call ",
+        "execute ",
+        "use ",
+        "try ",
+        "next: ",
+        "- ",
+        "* ",
+        "1. ",
+        "2. ",
+        "3. ",
+        "4. ",
+        "5. ",
+        "invoke ",
+        "suggest",
+        "recommend",
+        "should run",
+        "will use",
     ]
 
     found = []

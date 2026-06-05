@@ -2,9 +2,11 @@
 Hashing and Integrity Tools
 Wraps sha256sum, md5sum, sha1sum, and hashdeep.
 """
+
 import subprocess
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 
 class HashResult(BaseModel):
@@ -41,7 +43,7 @@ def compute_hash(file_path: str, algorithm: str = "sha256") -> HashResult:
         else:
             return HashResult(success=False, error=result.stderr[:1000])
     except subprocess.TimeoutExpired:
-        return HashResult(success=False, error=f"Hash computation timed out (300s)")
+        return HashResult(success=False, error="Hash computation timed out (300s)")
     except FileNotFoundError:
         return HashResult(success=False, error=f"{algorithm}sum not found")
     except Exception as e:
@@ -53,7 +55,9 @@ def compute_deep_hash(image_path: str) -> HashResult:
     try:
         result = subprocess.run(
             ["/usr/bin/hashdeep", "-l", "-c", "sha256", image_path],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
 
         if result.returncode == 0:
@@ -86,11 +90,13 @@ def verify_hash_match(file_path: str, expected_hash: str, algorithm: str = "sha2
             success=True,
             algorithm=algorithm,
             hash_value=result.hash_value,
-            data=[{
-                "file": file_path,
-                "expected": expected_hash,
-                "computed": result.hash_value,
-                "match": match,
-            }],
+            data=[
+                {
+                    "file": file_path,
+                    "expected": expected_hash,
+                    "computed": result.hash_value,
+                    "match": match,
+                }
+            ],
         )
     return result

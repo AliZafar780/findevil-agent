@@ -1,13 +1,16 @@
 """
 Shared Pydantic data models for forensic analysis results.
 """
+
 from datetime import datetime
-from typing import List, Optional, Any
+from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 
 class FileSystemEntry(BaseModel):
     """A file or directory entry from a forensic image."""
+
     name: str
     inode: Optional[int] = None
     file_type: str = Field(description="File type: file, directory, link, etc.")
@@ -23,6 +26,7 @@ class FileSystemEntry(BaseModel):
 
 class Finding(BaseModel):
     """A forensic finding with traceability information."""
+
     id: str = Field(description="Unique finding identifier")
     description: str
     confidence: str = Field(description="CONFIRMED, INFERRED, or UNVERIFIED")
@@ -37,6 +41,7 @@ class Finding(BaseModel):
 
 class ToolExecution(BaseModel):
     """Record of a single tool execution for audit trail."""
+
     tool: str
     arguments: dict = {}
     success: bool
@@ -48,6 +53,7 @@ class ToolExecution(BaseModel):
 
 class AuditReport(BaseModel):
     """Complete audit trail for submission."""
+
     session_id: str
     tool_executions: List[ToolExecution] = []
     findings: List[Finding] = []

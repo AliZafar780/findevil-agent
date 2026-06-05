@@ -2,11 +2,11 @@
 Cross-Platform Tool Resolution
 Finds forensic tools on any OS (Linux, macOS, Windows).
 """
+
 import shutil
 import sys
 from pathlib import Path
 from typing import Optional
-
 
 # Known tool locations per platform
 TOOL_LOCATIONS = {
@@ -117,12 +117,12 @@ TOOL_LOCATIONS = {
 def find_tool(name: str) -> Optional[str]:
     """
     Find a forensic tool on the current platform.
-    
+
     Strategy:
     1. Try `shutil.which()` (checks PATH)
     2. Try known locations for the current platform
     3. Try all known locations across platforms
-    
+
     Returns:
         Full path to tool, or None if not found.
     """
@@ -171,10 +171,15 @@ def require_tool(name: str) -> str:
 def _apt_package(name: str) -> str:
     """Map tool name to apt package name."""
     mapping = {
-        "fls": "sleuthkit", "icat": "sleuthkit", "mmls": "sleuthkit",
-        "fsstat": "sleuthkit", "istat": "sleuthkit",
-        "foremost": "foremost", "yara": "yara",
-        "tshark": "tshark", "strings": "binutils",
+        "fls": "sleuthkit",
+        "icat": "sleuthkit",
+        "mmls": "sleuthkit",
+        "fsstat": "sleuthkit",
+        "istat": "sleuthkit",
+        "foremost": "foremost",
+        "yara": "yara",
+        "tshark": "tshark",
+        "strings": "binutils",
         "debugfs": "e2fsprogs",
     }
     return mapping.get(name, name)
@@ -183,9 +188,14 @@ def _apt_package(name: str) -> str:
 def _brew_package(name: str) -> str:
     """Map tool name to Homebrew package name."""
     mapping = {
-        "fls": "sleuthkit", "icat": "sleuthkit", "mmls": "sleuthkit",
-        "fsstat": "sleuthkit", "istat": "sleuthkit",
-        "foremost": "foremost", "yara": "yara",
-        "tshark": "wireshark", "strings": "binutils",
+        "fls": "sleuthkit",
+        "icat": "sleuthkit",
+        "mmls": "sleuthkit",
+        "fsstat": "sleuthkit",
+        "istat": "sleuthkit",
+        "foremost": "foremost",
+        "yara": "yara",
+        "tshark": "wireshark",
+        "strings": "binutils",
     }
     return mapping.get(name, name)

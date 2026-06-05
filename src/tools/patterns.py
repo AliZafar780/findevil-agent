@@ -2,12 +2,14 @@
 Pattern Matching and YARA Tools
 Wraps yara and provides built-in detection rules.
 """
+
+import os
 import subprocess
 import tempfile
-import os
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 
 class PatternResult(BaseModel):
@@ -101,7 +103,9 @@ rule SuspiciousFileExtensions {
 """
 
 
-def scan_yara(target_path: str, rules_path: Optional[str] = None, rules_content: Optional[str] = None) -> PatternResult:
+def scan_yara(
+    target_path: str, rules_path: Optional[str] = None, rules_content: Optional[str] = None
+) -> PatternResult:
     """Scan a file or directory with YARA rules."""
     try:
         # Resolve rules
@@ -159,11 +163,13 @@ def search_text_patterns(file_path: str, patterns: list) -> PatternResult:
         for pattern in patterns:
             for i, line in enumerate(content.split("\n"), 1):
                 if pattern.lower() in line.lower():
-                    matches.append({
-                        "pattern": pattern,
-                        "line": i,
-                        "context": line[:200],
-                    })
+                    matches.append(
+                        {
+                            "pattern": pattern,
+                            "line": i,
+                            "context": line[:200],
+                        }
+                    )
 
         return PatternResult(
             success=True,

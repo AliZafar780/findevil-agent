@@ -2,11 +2,11 @@
 File System Analysis Tools
 Wraps TSK (The Sleuth Kit) commands via subprocess.
 """
-import json
+
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import List, Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -70,7 +70,9 @@ def _run_tsk(tool: str, args: List[str], timeout: int = 120) -> str:
         raise RuntimeError(f"{tool} not found at {SLEUTHKIT_BIN}/{tool}")
 
 
-def list_files(image_path: str, offset: int = 0, inode: Optional[int] = None, recursive: bool = False) -> FileSystemResult:
+def list_files(
+    image_path: str, offset: int = 0, inode: Optional[int] = None, recursive: bool = False
+) -> FileSystemResult:
     """List files using fls."""
     try:
         args = []
@@ -99,7 +101,9 @@ def list_files(image_path: str, offset: int = 0, inode: Optional[int] = None, re
         return FileSystemResult(success=False, error=str(e))
 
 
-def extract_file(image_path: str, inode: int, offset: int = 0, output_path: Optional[str] = None) -> FileSystemResult:
+def extract_file(
+    image_path: str, inode: int, offset: int = 0, output_path: Optional[str] = None
+) -> FileSystemResult:
     """Extract file using icat."""
     try:
         args = []
@@ -130,19 +134,26 @@ def scan_partitions(image_path: str) -> FileSystemResult:
         partitions = []
         for line in output.strip().split("\n"):
             stripped = line.strip()
-            if stripped and (stripped[0].isdigit() or "Meta" in stripped or "Unallocated" in stripped or "GPT" in stripped):
+            if stripped and (
+                stripped[0].isdigit()
+                or "Meta" in stripped
+                or "Unallocated" in stripped
+                or "GPT" in stripped
+            ):
                 parts = line.split()
                 if len(parts) >= 5:
                     try:
                         slot_str = parts[0].rstrip(":")
                         if slot_str.isdigit():
-                            partitions.append(Partition(
-                                slot=int(slot_str),
-                                start=int(parts[2]),
-                                end=int(parts[3]),
-                                length=int(parts[4]),
-                                description=" ".join(parts[5:]),
-                            ).model_dump())
+                            partitions.append(
+                                Partition(
+                                    slot=int(slot_str),
+                                    start=int(parts[2]),
+                                    end=int(parts[3]),
+                                    length=int(parts[4]),
+                                    description=" ".join(parts[5:]),
+                                ).model_dump()
+                            )
                     except (ValueError, IndexError):
                         continue
         return FileSystemResult(data=partitions)
@@ -178,7 +189,9 @@ def extract_strings(image_path: str, min_length: int = 6) -> FileSystemResult:
     try:
         result = subprocess.run(
             ["/usr/bin/strings", "-n", str(min_length), image_path],
-            capture_output=True, text=True, timeout=120
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         strings_list = [s for s in result.stdout.strip().split("\n") if s.strip()]
         return FileSystemResult(data=strings_list[:5000])

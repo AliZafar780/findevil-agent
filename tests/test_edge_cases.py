@@ -13,7 +13,6 @@ Tests every tool against:
   - Audit trail integrity
 """
 
-import asyncio
 import json
 import os
 import sys
@@ -39,11 +38,12 @@ async def _call(client, name: str, args: dict) -> dict:
 
 def _get_client():
     """Create a fresh SimpleMCPClient for each test.
-    
+
     Each test gets its own MCP server subprocess to avoid
     event loop attachment issues across async tests.
     """
     from src.agent.loop import SimpleMCPClient
+
     return SimpleMCPClient()
 
 
@@ -53,7 +53,7 @@ def _get_client():
 @pytest.fixture(scope="function")
 async def mcp_client():
     """Start a fresh MCP server per test.
-    
+
     Function-scoped to avoid asyncio event loop cross-contamination
     (each async test in pytest-asyncio gets its own event loop).
     Integration tests require system forensic tools installed.
@@ -96,9 +96,9 @@ class TestPathTraversal:
         r = await _call(mcp_client, "fs_partition_scan", {"image_path": path})
         assert not r.get("success"), f"Path should be blocked: {path}"
         err = (r.get("error") or "").lower()
-        assert any(w in err for w in ["access denied", "not exist", "outside evidence"]), (
-            f"Expected security error, got: {err}"
-        )
+        assert any(
+            w in err for w in ["access denied", "not exist", "outside evidence"]
+        ), f"Expected security error, got: {err}"
 
     @pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
     async def test_subdir_traversal_blocked(self, mcp_client):
@@ -111,7 +111,11 @@ class TestPathTraversal:
 
     async def test_null_byte_blocked(self, mcp_client):
         # Null byte test doesn't need a real file - just a path with embedded null
-        r = await _call(mcp_client, "fs_partition_scan", {"image_path": "/evidence/cases/test.raw\x00/etc/passwd"})
+        r = await _call(
+            mcp_client,
+            "fs_partition_scan",
+            {"image_path": "/evidence/cases/test.raw\x00/etc/passwd"},
+        )
         assert not r.get("success"), "Null byte injection should be blocked"
 
     async def test_missing_required_params(self, mcp_client):
@@ -124,36 +128,51 @@ class TestMissingEvidence:
 
     MISSING_PATH = "/nonexistent/path.raw"
 
-    @pytest.mark.parametrize("tool,args", [
-        ("fs_partition_scan", {"image_path": "/nonexistent/path.raw"}),
-        ("fs_list_files", {"image_path": "/nonexistent/path.raw"}),
-        ("fs_filesystem_info", {"image_path": "/nonexistent/path.raw"}),
-        ("verify_hash", {"file_path": "/nonexistent/path.raw", "algorithm": "sha256"}),
-    ])
+    @pytest.mark.parametrize(
+        "tool,args",
+        [
+            ("fs_partition_scan", {"image_path": "/nonexistent/path.raw"}),
+            ("fs_list_files", {"image_path": "/nonexistent/path.raw"}),
+            ("fs_filesystem_info", {"image_path": "/nonexistent/path.raw"}),
+            ("verify_hash", {"file_path": "/nonexistent/path.raw", "algorithm": "sha256"}),
+        ],
+    )
     async def test_tool_with_missing_path(self, mcp_client, tool, args):
         r = await _call(mcp_client, tool, args)
         assert not r.get("success"), f"{tool} should fail with missing path"
         assert r.get("error"), f"{tool} should provide error message"
 
     async def test_carve_missing_image(self, mcp_client):
-        r = await _call(mcp_client, "carve_files", {
-            "image_path": "/nonexistent/img.raw",
-            "output_dir": "/results/carved/test",
-        })
+        r = await _call(
+            mcp_client,
+            "carve_files",
+            {
+                "image_path": "/nonexistent/img.raw",
+                "output_dir": "/results/carved/test",
+            },
+        )
         assert not r.get("success"), "Carve with missing image should fail"
 
     async def test_yara_missing_target(self, mcp_client):
-        r = await _call(mcp_client, "scan_yara", {
-            "target": "/nonexistent/file.bin",
-            "rules": "rule t { condition: true }",
-        })
+        r = await _call(
+            mcp_client,
+            "scan_yara",
+            {
+                "target": "/nonexistent/file.bin",
+                "rules": "rule t { condition: true }",
+            },
+        )
         assert not r.get("success"), "YARA with missing target should fail"
 
     async def test_extract_missing_image(self, mcp_client):
-        r = await _call(mcp_client, "fs_extract_file", {
-            "image_path": "/nonexistent/img.raw",
-            "inode": 1,
-        })
+        r = await _call(
+            mcp_client,
+            "fs_extract_file",
+            {
+                "image_path": "/nonexistent/img.raw",
+                "inode": 1,
+            },
+        )
         assert not r.get("success"), "Extract with missing image should fail"
 
 
@@ -181,10 +200,14 @@ class TestInvalidArguments:
         assert not r.get("success"), "Nonexistent inode should fail"
 
     async def test_invalid_hash_algorithm(self, mcp_client, test_img):
-        r = await _call(mcp_client, "verify_hash", {
-            "file_path": test_img,
-            "algorithm": "invalid_algorithm",
-        })
+        r = await _call(
+            mcp_client,
+            "verify_hash",
+            {
+                "file_path": test_img,
+                "algorithm": "invalid_algorithm",
+            },
+        )
         assert not r.get("success"), "Invalid hash algorithm should fail"
 
     async def test_empty_yara_rules(self, mcp_client, test_img):
@@ -192,10 +215,14 @@ class TestInvalidArguments:
         assert not r.get("success"), "Empty YARA rules should fail"
 
     async def test_malformed_yara_rules(self, mcp_client, test_img):
-        r = await _call(mcp_client, "scan_yara", {
-            "target": test_img,
-            "rules": "not valid yara @@@ ###",
-        })
+        r = await _call(
+            mcp_client,
+            "scan_yara",
+            {
+                "target": test_img,
+                "rules": "not valid yara @@@ ###",
+            },
+        )
         assert not r.get("success"), "Malformed YARA rules should fail"
 
 
@@ -209,8 +236,10 @@ class TestWrongToolForEvidence:
         if r.get("success"):
             data = r.get("data", [])
             if data:
-                assert any("fallback" in (d.get("plugin") or "") or "string-based" in (d.get("note") or "") for d in data), \
-                    "Expected fallback IOC scan, not full memory analysis"
+                assert any(
+                    "fallback" in (d.get("plugin") or "") or "string-based" in (d.get("note") or "")
+                    for d in data
+                ), "Expected fallback IOC scan, not full memory analysis"
 
     async def test_memory_analyze_on_disk(self, mcp_client, test_img):
         r = await _call(mcp_client, "mem_analyze", {"memory_path": test_img})
@@ -218,8 +247,10 @@ class TestWrongToolForEvidence:
         if r.get("success"):
             data = r.get("data", [])
             if data:
-                assert any("fallback" in (d.get("plugin") or "") or "string-based" in (d.get("note") or "") for d in data), \
-                    "Expected fallback IOC scan, not full memory analysis"
+                assert any(
+                    "fallback" in (d.get("plugin") or "") or "string-based" in (d.get("note") or "")
+                    for d in data
+                ), "Expected fallback IOC scan, not full memory analysis"
 
     async def test_registry_tool_on_disk(self, mcp_client, test_img):
         r = await _call(mcp_client, "reg_analyze_hive", {"hive_path": test_img})
@@ -238,22 +269,29 @@ class TestWrongToolForEvidence:
 class TestCarvingEdgeCases:
     """Carve tool must handle output dir security and empty results."""
 
-    FORBIDDEN_DIRS = ["/etc", "/var", "/tmp", "/home", "/root",
-                      "/bin", "/usr", "/boot", "/dev"]
+    FORBIDDEN_DIRS = ["/etc", "/var", "/tmp", "/home", "/root", "/bin", "/usr", "/boot", "/dev"]
 
     @pytest.mark.parametrize("dir_path", FORBIDDEN_DIRS)
     async def test_carve_to_forbidden_dir(self, mcp_client, test_img, dir_path):
-        r = await _call(mcp_client, "carve_files", {
-            "image_path": test_img,
-            "output_dir": f"{dir_path}/carved",
-        })
+        r = await _call(
+            mcp_client,
+            "carve_files",
+            {
+                "image_path": test_img,
+                "output_dir": f"{dir_path}/carved",
+            },
+        )
         assert not r.get("success"), f"Carve to {dir_path} should be blocked"
 
     async def test_carve_with_empty_output_dir(self, mcp_client, test_img):
-        r = await _call(mcp_client, "carve_files", {
-            "image_path": test_img,
-            "output_dir": "",
-        })
+        r = await _call(
+            mcp_client,
+            "carve_files",
+            {
+                "image_path": test_img,
+                "output_dir": "",
+            },
+        )
         assert not r.get("success"), "Carve with empty output dir should fail"
 
 
@@ -262,26 +300,42 @@ class TestYaraEdgeCases:
     """YARA tool must handle no-match, match, and bad rules."""
 
     async def test_yara_no_match(self, mcp_client, test_img):
-        r = await _call(mcp_client, "scan_yara", {
-            "target": test_img,
-            "rules": "rule nevermatch { condition: false }",
-        })
+        r = await _call(
+            mcp_client,
+            "scan_yara",
+            {
+                "target": test_img,
+                "rules": "rule nevermatch { condition: false }",
+            },
+        )
         assert r.get("success"), "YARA with no match should succeed (clean)"
         assert r.get("match_count", -1) == 0, "Should have zero matches"
 
     async def test_yara_with_match(self, mcp_client, test_img):
-        r = await _call(mcp_client, "scan_yara", {
-            "target": test_img,
-            "rules": "rule FindEvil { strings: $m = \"malware\" $h = \"Find Evil\" condition: any of them }",
-        })
+        r = await _call(
+            mcp_client,
+            "scan_yara",
+            {
+                "target": test_img,
+                "rules": (
+                    "rule FindEvil { "
+                    'strings: $m = "malware" $h = "Find Evil" '
+                    "condition: any of them }"
+                ),
+            },
+        )
         assert r.get("success"), "YARA with matching rule should succeed"
         assert r.get("match_count", 0) > 0, "Should have at least one match"
 
     async def test_yara_empty_target(self, mcp_client):
-        r = await _call(mcp_client, "scan_yara", {
-            "target": "",
-            "rules": "rule t { condition: true }",
-        })
+        r = await _call(
+            mcp_client,
+            "scan_yara",
+            {
+                "target": "",
+                "rules": "rule t { condition: true }",
+            },
+        )
         assert not r.get("success"), "YARA with empty target should fail"
 
 
@@ -296,10 +350,14 @@ class TestLargeFileHandling:
                 f.write(b"X" * 50 * 1024 * 1024)  # 50MB
 
             for alg in ["md5", "sha1", "sha256"]:
-                r = await _call(mcp_client, "verify_hash", {
-                    "file_path": large_path,
-                    "algorithm": alg,
-                })
+                r = await _call(
+                    mcp_client,
+                    "verify_hash",
+                    {
+                        "file_path": large_path,
+                        "algorithm": alg,
+                    },
+                )
                 assert r.get("success"), f"Hash of 50MB file with {alg} should succeed"
                 assert r.get("hash"), "Should return a hash value"
         finally:
@@ -328,10 +386,14 @@ class TestOutputDirSecurity:
     """Output directories must be restricted to /results."""
 
     async def test_output_dir_outside_results(self, mcp_client, test_img):
-        r = await _call(mcp_client, "carve_files", {
-            "image_path": test_img,
-            "output_dir": "/tmp/unauthorized",
-        })
+        r = await _call(
+            mcp_client,
+            "carve_files",
+            {
+                "image_path": test_img,
+                "output_dir": "/tmp/unauthorized",
+            },
+        )
         assert not r.get("success"), "Output outside /results should be blocked"
 
 
@@ -352,9 +414,9 @@ class TestConcurrentAccess:
             results.append(r.get("success", False))
 
         success_count = sum(1 for r in results if r)
-        assert success_count == len(results), (
-            f"Only {success_count}/{len(results)} rapid sequential calls succeeded"
-        )
+        assert success_count == len(
+            results
+        ), f"Only {success_count}/{len(results)} rapid sequential calls succeeded"
 
 
 class TestErrorMessageQuality:
@@ -366,10 +428,14 @@ class TestErrorMessageQuality:
         assert len(err_msg) > 20, f"Error msg too short: '{err_msg}'"
 
     async def test_descriptive_error_bad_output_dir(self, mcp_client, test_img):
-        r = await _call(mcp_client, "carve_files", {
-            "image_path": test_img,
-            "output_dir": "/tmp/bad",
-        })
+        r = await _call(
+            mcp_client,
+            "carve_files",
+            {
+                "image_path": test_img,
+                "output_dir": "/tmp/bad",
+            },
+        )
         err_msg = r.get("error", "")
         assert len(err_msg) > 20, f"Error msg too short: '{err_msg}'"
 
