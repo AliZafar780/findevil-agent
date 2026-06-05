@@ -27,8 +27,8 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
     <a href="https://github.com/AliZafar780/findevil-agent/actions"><img src="https://img.shields.io/badge/build-CI%20%7C%20Docker%20%7C%20Lint%20%7C%20Type%20Check-blue?style=flat-square" alt="CI"></a>
     <img src="https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue?style=flat-square&logo=python" alt="Python">
-    <img src="https://img.shields.io/badge/tests-52%20passing-brightgreen?style=flat-square" alt="Tests">
-    <img src="https://img.shields.io/badge/tools-23%20MCP-informational?style=flat-square" alt="Tools">
+    <img src="https://img.shields.io/badge/tests-107%20passing-brightgreen?style=flat-square" alt="Tests">
+    <img src="https://img.shields.io/badge/tools-22%20MCP-informational?style=flat-square" alt="Tools">
     <img src="https://img.shields.io/badge/AI-Groq%20%7C%20Deterministic%20Mode-orange?style=flat-square" alt="AI">
   </p>
   <p>
@@ -40,7 +40,7 @@
 
 ## 🔥 Overview
 
-**FindEvil** is an autonomous digital forensics and incident response agent that orchestrates **23 MCP forensic tools** across memory, filesystem, registry, network, and carving analysis. It supports **Groq AI** for intelligent tool selection and report generation, and runs fully in **deterministic mode without any API key**.
+**FindEvil** is an autonomous digital forensics and incident response agent that orchestrates **22 MCP forensic tools** across memory, filesystem, registry, network, and carving analysis. It supports **Groq AI** for intelligent tool selection and report generation, and runs fully in **deterministic mode without any API key**.
 
 > _"Find Evil, find answers, find closure."_
 
@@ -48,17 +48,41 @@
 
 | Capability | Status |
 |---|---|
-| 🔌 **23 MCP Forensic Tools** | Disk, memory, registry, network, carving, hashing, YARA |
+| 🔌 **22 MCP Forensic Tools** | Disk, memory, registry, network, carving, hashing, YARA |
 | 🤖 **AI Integration** | Groq Llama 3.3 70B (optional — deterministic mode always works) |
 | ✅ **Zero API Key Required** | All features operational without Groq, Shodan, or any external key |
 | 🛡️ **Security Hardened** | Path traversal blocked, null bytes rejected, async lock concurrency |
 | ⚡ **Performance Tuned** | Lazy imports, cached tool resolution, buffered audit writes |
 | 📊 **Confidence Scoring** | Per-tool data quality: CONFIRMED / INFERRED / UNVERIFIED |
 | 💰 **Token Budget Caps** | Max 100K tokens/session (~$0.07) with real-time tracking |
-| 🧪 **52 Passing Tests** | Unit (41) + Integration (11) across CLI, tools, parser, server |
+| 🧪 **107 Passing Tests** | Unit (41) + Integration (66) across CLI, tools, parser, server, edge cases |
 | 🐳 **Docker** | Multi-stage build: python:3.11-slim → ubuntu:24.04 with sleuthkit, yara, tshark, foremost, bulk-extractor |
 | 🔄 **CI/CD** | GitHub Actions: lint, type-check, test (4 Python versions), build, Docker, security audit |
 | 📈 **Gap Analysis** | Comprehensive 33-gap audit closed — [GAP_ANALYSIS.md](GAP_ANALYSIS.md) |
+
+---
+
+## 🎬 Quick Demo
+
+```bash
+# 1. Install
+git clone https://github.com/AliZafar780/findevil-agent.git && cd findevil-agent
+pip install -e .
+
+# 2. Check environment (2 seconds)
+findevil check
+
+# 3. Generate a test image with real IOCs
+findevil create-test-image test.dd
+
+# 4. Run full autonomous investigation
+findevil investigate test.dd --output ./results
+
+# 5. Try a single tool
+findevil tool fs_list_files --image test.dd
+```
+
+**Without any API key** — the AI features automatically disable and the system runs in deterministic mode. For AI-powered analysis, set `GROQ_API_KEY` and re-run.
 
 ---
 
@@ -70,7 +94,7 @@
 ├────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐   ┌──────────────┐   ┌────────────────────────┐ │
 │  │  CLI (rich)   │   │ MCP Server   │   │ Groq AI / Deterministic│ │
-│  │  findevil     │──▶│ 23 Tools API │──▶│ Tool Selector + Report │ │
+│  │  findevil     │──▶│ 22 Tools API │──▶│ Tool Selector + Report │ │
 │  └──────────────┘   └──────┬───────┘   └───────────┬────────────┘ │
 │                            │                        │              │
 │  ┌─────────────────────────┴──────────────────────┐ │              │
@@ -123,7 +147,7 @@
 
 ### MCP Server
 
-FindEvil implements the **Model Context Protocol** (MCP), making all 23 tools available to any MCP-compatible LLM client (Claude Code, custom agents, etc.).
+FindEvil implements the **Model Context Protocol** (MCP), making all 22 tools available to any MCP-compatible LLM client (Claude Code, custom agents, etc.).
 
 ```json
 {
@@ -228,16 +252,16 @@ pytest tests/test_groq_client.py -v       # Parser, selector, client tests (22)
 pytest tests/test_server.py -v            # MCP server integration tests (11)
 ```
 
-**52 tests passing** across 4 test suites:
+**107 tests passing** across 6 test suites:
 
 | Suite | Type | Count | Coverage |
 |---|---|---|---|
 | CLI | Unit | 4 | Logo rendering, version, help, imports |
 | Forensic Tools | Unit | 15 | Models (hash, pattern, filesystem, registry, network, timeline, memory), tool resolver |
 | Groq Client | Unit | 22 | Client init, output parser (JSON extraction, tool decisions, reports), tool selector (suggestions, fallback chains) |
-| Server | Integration | 11 | Tool execution, path validation, security (null byte, missing params) |
-
-Plus **56 edge case integration tests** covering path traversal, missing evidence, carving, YARA, large files, audit trail, concurrent access, and error message quality.
+| Workflow | Integration | 2 | Agent loop phases, tool chaining |
+| Edge Cases | Integration | 53 | Path traversal, missing evidence, carving security, YARA, large files, audit trail, concurrent access, error quality, wrong-tool rejection |
+| Server | Integration | 11 | Tool execution, hash verification, evidence listing, path validation, null byte, missing params |
 
 ### CI Pipeline
 
@@ -308,7 +332,7 @@ Multi-stage Dockerfile: `python:3.11-slim` builder → `ubuntu:24.04` runtime wi
 findevil-agent/
 ├── src/
 │   ├── cli.py                   # Rich CLI entry point
-│   ├── server.py                # MCP server (23 tools, async subprocess, audit, benchmarks)
+│   ├── server.py                # MCP server (22 tools, async subprocess, audit, benchmarks)
 │   ├── models.py                # Pydantic data models
 │   ├── __main__.py              # Package entry point
 │   ├── agent/
@@ -336,7 +360,7 @@ findevil-agent/
 │   ├── test_forensic_tools.py   # Tool model tests (15)
 │   ├── test_groq_client.py      # Parser/selector/client tests (22)
 │   ├── test_server.py           # MCP server integration tests (11)
-│   ├── test_edge_cases.py       # Edge case integration tests (56)
+│   ├── test_edge_cases.py       # Edge case integration tests (53)
 │   └── test_workflow.py         # Workflow tests
 ├── .github/workflows/ci.yml     # GitHub Actions CI/CD
 ├── Dockerfile                   # Multi-stage Docker build
@@ -367,6 +391,109 @@ All 33 identified gaps have been closed across 13 phases:
 | 13 | Types | All 22 handlers annotated |
 
 See [GAP_ANALYSIS.md](GAP_ANALYSIS.md) for the full report.
+
+---
+
+## 🐛 Troubleshooting
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| `Tool not found` | Forensic tool not installed | `sudo apt install sleuthkit foremost yara tshark` (Linux) or `brew install sleuthkit foremost yara tshark` (macOS) |
+| `No partition table found` | Image is a raw filesystem (no MBR/GPT) | Normal — use `fs_filesystem_info` instead, or pass `--offset 0` |
+| `Not a Registry hive file` | Wrong tool for the evidence | Memory/disk images can't be parsed as registry — use `fs_list_files` first to identify the evidence type |
+| `Not a packet capture file` | Wrong tool for the evidence | Same as above — verify the evidence type with `fs_filesystem_info` |
+| `AI returned no tools` | Parser couldn't extract JSON from LLM response | Falls back to deterministic mode automatically — no action needed |
+| `Image contains no files` | Wrong offset or corrupted image | Try different partition offsets: `fs_partition_scan` first, then use the detected offset |
+| `HAS_EVIDENCE=False` / tests skipped | No test image at `/evidence/cases/test.raw` | Run `findevil create-test-image /evidence/cases/test.raw` to generate one |
+| `ModuleNotFoundError` | Package not installed | Run `pip install -e .` from the project root |
+
+### Still stuck?
+
+```bash
+# Check your environment
+findevil check
+
+# Run with debug logging
+findevil investigate ./evidence.dd --debug
+
+# Or start a discussion on GitHub
+```
+
+---
+
+## 🧩 Extending: Adding a New Forensic Tool
+
+Each tool follows a 3-step pattern:
+
+### Step 1: Write the tool logic (`src/tools/`)
+
+```python
+# src/tools/strings.py
+import subprocess
+from pydantic import BaseModel
+
+class StringsResult(BaseModel):
+    success: bool
+    strings: list[str] = []
+    error: str = ""
+
+def extract_strings(image_path: str, min_len: int = 6) -> StringsResult:
+    """Extract readable strings from a binary image."""
+    try:
+        result = subprocess.run(
+            ["strings", "-n", str(min_len), image_path],
+            capture_output=True, text=True, timeout=60,
+        )
+        lines = [s for s in result.stdout.split("\n") if s.strip()]
+        return StringsResult(success=True, strings=lines[:200])
+    except Exception as e:
+        return StringsResult(success=False, error=str(e))
+```
+
+### Step 2: Register in the MCP server (`src/server.py`)
+
+```python
+# 1. Import your module
+from src.tools.strings import extract_strings, StringsResult
+
+# 2. Add a Tool definition to `_register_tools()`
+Tool(
+    name="extract_strings",
+    description="Extract ASCII/Unicode strings from a binary file",
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "image_path": {"type": "string", "description": "Path to binary file"},
+            "min_length": {"type": "integer", "description": "Minimum string length", "default": 6},
+        },
+        "required": ["image_path"],
+    },
+),
+
+# 3. Add a handler function
+async def _handle_extract_strings(args: dict) -> list[TextContent]:
+    image_path = args["image_path"]
+    min_len = args.get("min_length", 6)
+    err = _validate_evidence_path(image_path)
+    if err:
+        return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
+    result = extract_strings(image_path, min_len)
+    return [TextContent(type="text", text=result.model_dump_json(indent=2))]
+
+# 4. Add to handler map (inside `_register_tools()`)
+handler_map["extract_strings"] = _handle_extract_strings
+```
+
+### Step 3: Register in tool selector for AI (`src/agent/tool_selector.py`)
+
+```python
+# Add to your phase's tool list
+PHASE_TOOLS["strings_analysis"] = [
+    {"tool": "extract_strings", "priority": 1, "reasoning": "Extract embedded strings"},
+]
+```
+
+That's it. The tool will appear in `findevil tools`, be callable via MCP, and be available for AI-driven workflows.
 
 ---
 

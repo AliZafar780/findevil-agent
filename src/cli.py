@@ -146,7 +146,7 @@ def main():
     parser = argparse.ArgumentParser(
         prog="findevil",
         description="FindEvil — Autonomous DFIR Analysis Agent",
-        epilog="Powered by Groq AI | 21 MCP Tools | Cross-Platform",
+        epilog="Powered by Groq AI | 22 MCP Tools | Cross-Platform",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"FindEvil Agent v{_get_version()}")
@@ -299,7 +299,7 @@ def _print_logo():
         _print(
             Panel.fit(
                 "[bold cyan]Autonomous DFIR Analysis Agent[/bold cyan]\n"
-                "[dim]AI-powered digital forensics  ·  21 MCP Tools  ·  Cross-Platform[/dim]",
+                "[dim]AI-powered digital forensics  ·  22 MCP Tools  ·  Cross-Platform[/dim]",
                 border_style="cyan",
                 padding=(0, 4),
             )
@@ -310,7 +310,7 @@ def _print_logo():
         print(f"{ANSI_DIM}{'─' * 60}{ANSI_RESET}")
         print(f"{ANSI_CYAN}  Autonomous DFIR Analysis Agent{ANSI_RESET}")
         print(
-            f"{ANSI_DIM}  AI-powered digital forensics  |  21 MCP Tools  |  Cross-Platform{ANSI_RESET}"
+            f"{ANSI_DIM}  AI-powered digital forensics  |  22 MCP Tools  |  Cross-Platform{ANSI_RESET}"
         )
         print(f"{ANSI_DIM}{'─' * 60}{ANSI_RESET}")
 
