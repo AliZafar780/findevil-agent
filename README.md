@@ -1,103 +1,152 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/FindEvil-v2.1-9cf?style=for-the-badge&logo=python" alt="Version" />
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License" />
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=for-the-badge" alt="Platform" />
-  <img src="https://img.shields.io/badge/AI-Groq%20Llama%203.3-brightgreen?style=for-the-badge" alt="AI" />
-</p>
-
-<pre align="center">
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║     ______ _       _   ______        _ _                     ║
-║    |  ___(_)     | | |  ____|      (_) |                    ║
-║    | |_   _  __ _| | | |__   _ __   _| | ___  ___          ║
-║    |  _| | |/ _` | | |  __| | '_ \ | | |/ _ \/ __|         ║
-║    | |   | | (_| | | | |____| |_) || | |  __/\__ \         ║
-║    \_|   |_|\__, |_| \_____/| .__/ |_|_|\___||___/         ║
-║              __/ |          | |                             ║
-║             |___/           |_|                             ║
-║                                                              ║
-║     Autonomous DFIR Analysis Agent                          ║
-║     AI-Powered Digital Forensics & Incident Response        ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
-</pre>
-
-<h3 align="center">
-  🔬 Automated Evidence Analysis · 🧠 AI-Driven Investigation · 🛠️ 21 Forensic Tools
-</h3>
+<div align="center">
+  <pre>
+                           ;
+     Et                          ED.
+     E#t          L.             E#Wi                       ,;
+     E##t     t   EW:        ,ft E###G.                   f#i            t              i
+     E#W#t    Ej  E##;       t#E E#fD#W;                .E#t             Ej            LE
+     E#tfL.   E#, E###t      t#E E#t t##L              i#W,   t      .DD.E#,          L#E
+     E#t      E#t E#fE#f     t#E E#t  .E#K,           L#D.    EK:   ,WK. E#t         G#W.
+  ,ffW#Dffj.  E#t E#t D#G    t#E E#t    j##f        :K#Wfff;  E#t  i#D   E#t        D#K.
+   ;LW#ELLLf. E#t E#t  f#E.  t#E E#t    :E#K:       i##WLLLLt E#t j#f    E#t       E#K.
+     E#t      E#t E#t   t#K: t#E E#t   t##L          .E#L     E#tL#i     E#t     .E#E.
+     E#t      E#t E#t    ;#W,t#E E#t .D#W;             f#E:   E#WW,      E#t    .K#E
+     E#t      E#t E#t     :K#D#E E#tiW#G.               ,WW;  E#K:       E#t   .K#D
+     E#t      E#t E#t      .E##E E#K##i                  .D#; ED.        E#t  .W#G
+     E#t      E#t ..         G#E E##D.                     tt t          E#t :W##########Wt
+     ;#t      ,;.             fE E#t                                     ,;. :,,,,,,,,,,,,,.
+      :;                       , L:
+  </pre>
+  <h1>FindEvil Agent</h1>
+  <p>
+    <strong>Autonomous DFIR Analysis Agent</strong><br>
+    AI-Powered Digital Forensics &amp; Incident Response
+  </p>
+  <p>
+    <a href="https://github.com/AliZafar780/findevil-agent"><img src="https://img.shields.io/badge/version-2.1.1-blue?style=flat-square&logo=github" alt="Version"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
+    <a href="https://github.com/AliZafar780/findevil-agent/actions"><img src="https://img.shields.io/badge/build-CI%20%7C%20Docker%20%7C%20Lint%20%7C%20Type%20Check-blue?style=flat-square" alt="CI"></a>
+    <img src="https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue?style=flat-square&logo=python" alt="Python">
+    <img src="https://img.shields.io/badge/tests-52%20passing-brightgreen?style=flat-square" alt="Tests">
+    <img src="https://img.shields.io/badge/tools-23%20MCP-informational?style=flat-square" alt="Tools">
+    <img src="https://img.shields.io/badge/AI-Groq%20%7C%20Deterministic%20Mode-orange?style=flat-square" alt="AI">
+  </p>
+  <p>
+    <code># dfir</code> <code># incident-response</code> <code># forensics</code> <code># mcp</code> <code># memory-forensics</code>
+  </p>
+</div>
 
 ---
 
 ## 🔥 Overview
 
-**FindEvil** is an autonomous digital forensics and incident response (DFIR) agent that leverages **Groq AI (Llama 3.3 70B)** to intelligently orchestrate forensic investigations. Given evidence — disk images, memory dumps, PCAPs, or registry hives — it analyzes the artifacts, correlates findings, and produces a narrative report.
+**FindEvil** is an autonomous digital forensics and incident response agent that orchestrates **23 MCP forensic tools** across memory, filesystem, registry, network, and carving analysis. It supports **Groq AI** for intelligent tool selection and report generation, and runs fully in **deterministic mode without any API key**.
 
-> "_Find Evil, find answers, find closure._"
+> _"Find Evil, find answers, find closure."_
 
-### 🧠 How It Works
+### Key Highlights
 
-FindEvil operates in phases, each powered by a selection of its 21 forensic tools:
-
-1. **Triage** — Initialize, verify evidence integrity via hashing, inspect filesystem metadata
-2. **Filesystem Analysis** — List files, extract metadata, recover deleted content
-3. **Artifact Extraction** — Carve deleted files, scan with YARA rules
-4. **Memory Analysis** — List processes, scan network connections, dump command lines
-5. **Registry Analysis** — Parse hive files, extract keys and values
-6. **Network Analysis** — Analyze PCAPs, extract protocols, reconstruct conversations
-7. **AI Report** — Groq LLM synthesizes findings into a natural-language report
+| Capability | Status |
+|---|---|
+| 🔌 **23 MCP Forensic Tools** | Disk, memory, registry, network, carving, hashing, YARA |
+| 🤖 **AI Integration** | Groq Llama 3.3 70B (optional — deterministic mode always works) |
+| ✅ **Zero API Key Required** | All features operational without Groq, Shodan, or any external key |
+| 🛡️ **Security Hardened** | Path traversal blocked, null bytes rejected, async lock concurrency |
+| ⚡ **Performance Tuned** | Lazy imports, cached tool resolution, buffered audit writes |
+| 📊 **Confidence Scoring** | Per-tool data quality: CONFIRMED / INFERRED / UNVERIFIED |
+| 💰 **Token Budget Caps** | Max 100K tokens/session (~$0.07) with real-time tracking |
+| 🧪 **52 Passing Tests** | Unit (41) + Integration (11) across CLI, tools, parser, server |
+| 🐳 **Docker** | Multi-stage build: python:3.11-slim → ubuntu:24.04 with sleuthkit, yara, tshark, foremost, bulk-extractor |
+| 🔄 **CI/CD** | GitHub Actions: lint, type-check, test (4 Python versions), build, Docker, security audit |
+| 📈 **Gap Analysis** | Comprehensive 33-gap audit closed — [GAP_ANALYSIS.md](GAP_ANALYSIS.md) |
 
 ---
 
 ## 🏗️ Architecture
 
-<p align="center">
-  <img src="docs/findevil-architecture.png" alt="FindEvil Architecture Diagram" width="900" />
-  <br />
-  <em>Full architecture: CLI → MCP Server → Groq AI → 6-Phase Workflow → 21 Forensic Tools</em>
-</p>
-
-> 📥 **Download:** [SVG Diagram](docs/architecture.svg) · [PNG Diagram](docs/findevil-architecture.png)
-
-Or view the architecture in your terminal:
-
-```bash
-findevil ascii-arch
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                         FindEvil Agent                             │
+├────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐   ┌──────────────┐   ┌────────────────────────┐ │
+│  │  CLI (rich)   │   │ MCP Server   │   │ Groq AI / Deterministic│ │
+│  │  findevil     │──▶│ 23 Tools API │──▶│ Tool Selector + Report │ │
+│  └──────────────┘   └──────┬───────┘   └───────────┬────────────┘ │
+│                            │                        │              │
+│  ┌─────────────────────────┴──────────────────────┐ │              │
+│  │            DFIR Workflow Engine                 │ │              │
+│  │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ │ │              │
+│  │  │Triage│→│  FS   │→│Carve │→│Memory│→│Registry│ │              │
+│  │  └──────┘ └──────┘ └──────┘ └──────┘ └──────┘ │ │              │
+│  │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐          │ │              │
+│  │  │Network││Hashing││ YARA ││Timeline│          │ │              │
+│  │  └──────┘ └──────┘ └──────┘ └──────┘          │ │              │
+│  └────────────────────────────────────────────────┘ │              │
+│                            │                        │              │
+│  ┌─────────────────────────┴──────────────────────┐ │              │
+│  │         Tool Resolver + Config/Tools.TOML       │ │              │
+│  │  fls │ icat │ mmls │ foremost │ yara │ tshark   │              │
+│  │  bulk_extractor │ hashdeep │ volatility3 │ regipy │              │
+│  └────────────────────────────────────────────────┘              │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-```
-  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-  │   💻 findevil    │    │   🔌 MCP Server  │    │   🤖 Claude/LLM │
-  │   Rich CLI App   │───▶│   21 Tools API   │───▶│   MCP Client    │
-  └─────────────────┘    └─────────────────┘    └─────────────────┘
-                            │
-                            ▼
-              ┌───────────────────────────────┐
-              │   🧠 Groq AI (Llama 3.3 70B)  │
-              └───────────────────────────────┘
-                            │
-                            ▼
-  ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐
-  │Triage │→│  FS   │→│Carving│→│Memory │→│Registry│→│Network│
-  └───────┘ └───────┘ └───────┘ └───────┘ └───────┘ └───────┘
-```
+### How It Works
+
+1. **Evidence Input** → Disk images (raw, E01), memory dumps (raw, ELF), PCAPs, registry hives
+2. **Triage** → Verify integrity via hashing (SHA256/SHA1/MD5), inspect filesystem metadata
+3. **Filesystem Analysis** → List files, extract metadata, recover deleted content via TSK
+4. **Artifact Extraction** → Carve deleted files, scan with YARA rules
+5. **Memory Analysis** → List processes, scan network connections, dump command lines
+6. **Registry Analysis** → Parse hive files, extract keys and values
+7. **Network Analysis** → Analyze PCAPs, extract protocols, reconstruct conversations
+8. **Timeline** → Export MAC timelines for temporal correlation
+9. **AI/Deterministic Report** → Groq LLM or built-in narrative report generator
 
 ---
 
 ## ✨ Features
 
-| Category | Capability |
-|----------|------------|
-| 🤖 **AI-Powered** | Groq Llama 3.3 70B orchestrates tools and writes analysis reports |
-| 🛠️ **21 Tools** | TSK (fls, icat, mmls, fsstat, istat), foremost, YARA, tshark, Volatility 3, regipy, and more |
-| 💾 **Memory Forensics** | Process listing, network scanning, command-line extraction via Volatility 3 |
-| 🗂️ **Filesystem Forensics** | Full TSK integration: NTFS, ext2/3/4, FAT, HFS+ |
-| 📡 **Network Forensics** | PCAP analysis with tshark, protocol dissection, conversation reconstruction |
-| 🪟 **Windows Registry** | Hive parsing via regipy — SAM, SYSTEM, SOFTWARE, NTUSER.DAT |
-| 🧩 **File Carving** | Foremost YARA integration for pattern-based carving |
-| 🔌 **MCP Server** | Model Context Protocol server for Claude Code and other LLM integration |
-| 🖥️ **Rich CLI** | Beautiful ASCII logo, colored output, progress bars (via `rich`) |
-| 🌍 **Cross-Platform** | Linux, macOS, Windows — with automatic path resolution |
+### Tool Categories
+
+| Category | Tools | Backend |
+|---|---|---|
+| 🔍 **Filesystem** | `fs_partition_scan`, `fs_list_files`, `fs_file_metadata`, `fs_extract_file`, `fs_filesystem_info` | TSK (fls, icat, mmls, fsstat, istat) |
+| 🧩 **Carving** | `carve_files` | foremost |
+| 📋 **Hashing** | `verify_hash` | hashdeep / openssl |
+| 🧬 **YARA** | `scan_yara` | yara (built-in rules for C2 domains, crypto miners, PowerShell abuse, webshells) |
+| 🧠 **Memory** | `mem_list_processes`, `mem_analyze`, `mem_scan_network`, `mem_dump_cmdline` | Volatility 3 + string-based IOC fallback |
+| 🪟 **Registry** | `reg_analyze_hive`, `reg_list_keys`, `reg_get_value` | regipy |
+| 📡 **Network** | `pcap_analyze`, `pcap_list_protocols`, `pcap_extract_streams` | tshark |
+| ℹ️ **Info** | `list_evidence`, `get_case_info`, `export_timeline` | TSK + built-in |
+| ⚙️ **Config** | `get_tool_config` | config/tools.toml |
+
+### MCP Server
+
+FindEvil implements the **Model Context Protocol** (MCP), making all 23 tools available to any MCP-compatible LLM client (Claude Code, custom agents, etc.).
+
+```json
+{
+  "mcpServers": {
+    "findevil": {
+      "command": "findevil",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+### Graceful Degradation
+
+All features work **without any API key**:
+
+| Feature | With API Key | Without API Key |
+|---|---|---|
+| Tool execution | ✅ | ✅ |
+| Tool selection | ✅ (AI-optimized) | ✅ (deterministic fallback chains) |
+| Report generation | ✅ (Groq narrative) | ✅ (built-in narrative generator) |
+| Token tracking | ✅ | ✅ (capped at $0) |
+| Audit trail | ✅ | ✅ |
 
 ---
 
@@ -106,62 +155,35 @@ findevil ascii-arch
 ### Prerequisites
 
 - **Python 3.10+**
-- **System Tools** (recommended): `sudo apt install sleuthkit foremost yara tshark` (Linux) or `brew install` (macOS)
-- **Groq API Key**: [Get one free](https://console.groq.com)
+- **System Tools** (recommended for full functionality):
+  ```bash
+  sudo apt install sleuthkit foremost yara tshark   # Linux
+  brew install sleuthkit foremost yara tshark        # macOS
+  ```
+- **Groq API Key** (optional): [Get one free](https://console.groq.com)
 
 ### Install
 
 ```bash
-# Clone and enter
-git clone <your-repo-url>
-cd findevil-memorygraph
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install
+git clone https://github.com/AliZafar780/findevil-agent.git
+cd findevil-agent
+python3 -m venv venv && source venv/bin/activate
 pip install -e .
 ```
 
-### Check Environment
-
-Verify everything is in place:
+### Verify
 
 ```bash
 findevil check
 ```
 
-<pre>
-╔══════════════════════════════════════════════════╗
-║  FindEvil — Environment Check                   ║
-╚══════════════════════════════════════════════════╝
-┌────── System Tools ──────┐
-│ fls       ✅ found       │
-│ icat      ✅ found       │
-│ mmls      ✅ found       │
-│ foremost  ✅ found       │
-│ yara      ✅ found       │
-│ tshark    ✅ found       │
-└──────────────────────────┘
-┌────── Python Modules ──────┐
-│ fastmcp    ✅ installed    │
-│ groq       ✅ installed    │
-│ volatility3 ✅ installed   │
-│ regipy     ✅ installed    │
-└────────────────────────────┘
-✅ All systems ready for DFIR analysis!
-</pre>
-
 ### Run an Investigation
 
 ```bash
-export GROQ_API_KEY="gsk_..."
-
 findevil investigate ./evidence.dd --output ./results
 ```
 
-Or without AI (tool results only):
+Without AI (deterministic mode — no API key needed):
 
 ```bash
 findevil investigate ./evidence.dd --no-ai
@@ -173,116 +195,58 @@ Run a single phase:
 findevil investigate ./evidence.dd --phase memory
 ```
 
-### Start MCP Server (for Claude Code)
-
-```bash
-findevil serve
-```
-
-### List Tools
-
-```bash
-findevil tools
-```
-
-### Run a Single Tool
-
-```bash
-findevil tool fs_list_files --image evidence.dd
-findevil tool mem_list_processes --image memdump.raw
-findevil tool scan_yara --image evidence.dd --rules "rule Bad { strings: \$a = \"evil\" condition: \$a }"
-findevil tool carve_files --image evidence.dd --output ./carved
-```
-
-### Create Test Image
-
-Generate a synthetic disk image with known artifacts for testing:
-
-```bash
-findevil create-test-image test.dd --size 50
-```
-
----
-
-## 🗺️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      FindEvil Agent                         │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐   │
-│  │  CLI (rich)  │  │  MCP Server  │  │  Groq AI Client  │   │
-│  └──────┬───────┘  └──────┬───────┘  └────────┬─────────┘   │
-│         │                 │                    │              │
-│  ┌──────┴─────────────────┴────────────────────┴─────────┐   │
-│  │                 DFIR Workflow Engine                   │   │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────┐  │   │
-│  │  │  Triage  │  │ Filesys  │  │  Memory  │  │ Net  │  │   │
-│  │  └──────────┘  └──────────┘  └──────────┘  └──────┘  │   │
-│  └────────────────────────────────────────────────────────┘   │
-│                         │                                      │
-│  ┌──────────────────────┴──────────────────────────────────┐   │
-│  │               21 Forensic Tool Resolver                  │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Tool Categories
-
-| Category | Tools |
-|----------|-------|
-| 🔍 **Filesystem** | `fs_list_files`, `fs_file_metadata`, `fs_extract_file`, `fs_filesystem_info` |
-| 🧩 **Carving** | `carve_files` (foremost) |
-| 📋 **Hashing** | `verify_hash`, `compute_hash` |
-| 🧬 **YARA** | `scan_yara` |
-| 🧠 **Memory** | `mem_list_processes`, `mem_analyze`, `mem_scan_network`, `mem_dump_cmdline` |
-| 🪟 **Registry** | `reg_analyze_hive`, `reg_list_keys`, `reg_get_value` |
-| 📡 **Network** | `pcap_analyze`, `pcap_list_protocols`, `pcap_extract_streams` |
-| ℹ️ **Info** | `list_evidence`, `get_case_info`, `export_timeline` |
-
----
-
-## 🧪 Test Image
-
-Generate a synthetic disk image to test the agent:
+### Generate a Test Image
 
 ```bash
 findevil create-test-image test.dd --size 50
 findevil investigate test.dd --no-ai
 ```
 
-The test image includes known artifacts:
-- `hello.txt` — embedded IOCs (IPs, registry keys, malware paths)
-- `evil.ps1` — malicious PowerShell script
-- `mimikatz_log.txt` — simulated credential dump
-- Simulated SAM registry hive
+### Start MCP Server
+
+```bash
+findevil serve
+```
+
+### List & Call Tools
+
+```bash
+findevil tools
+findevil tool fs_list_files --image evidence.dd
+findevil tool scan_yara --image evidence.dd --rules "rule Bad { strings: \$a = \"evil\" condition: \$a }"
+```
 
 ---
 
-## 🔌 MCP Server Integration
-
-FindEvil implements the **Model Context Protocol** (MCP), making it compatible with:
-
-### Claude Code
+## 🧪 Tests
 
 ```bash
-# In Claude Code config:
-{
-  "mcpServers": {
-    "findevil": {
-      "command": "findevil",
-      "args": ["serve"],
-      "env": {
-        "GROQ_API_KEY": "gsk_..."
-      }
-    }
-  }
-}
+pytest tests/ -v                          # All tests
+pytest tests/test_cli.py -v               # CLI tests (4)
+pytest tests/test_forensic_tools.py -v    # Tool model & resolver tests (15)
+pytest tests/test_groq_client.py -v       # Parser, selector, client tests (22)
+pytest tests/test_server.py -v            # MCP server integration tests (11)
 ```
 
-### Custom LLM Clients
+**52 tests passing** across 4 test suites:
 
-Any MCP-compatible LLM client can use FindEvil's tools. See `examples/mcp_client.py` for a reference.
+| Suite | Type | Count | Coverage |
+|---|---|---|---|
+| CLI | Unit | 4 | Logo rendering, version, help, imports |
+| Forensic Tools | Unit | 15 | Models (hash, pattern, filesystem, registry, network, timeline, memory), tool resolver |
+| Groq Client | Unit | 22 | Client init, output parser (JSON extraction, tool decisions, reports), tool selector (suggestions, fallback chains) |
+| Server | Integration | 11 | Tool execution, path validation, security (null byte, missing params) |
+
+Plus **56 edge case integration tests** covering path traversal, missing evidence, carving, YARA, large files, audit trail, concurrent access, and error message quality.
+
+### CI Pipeline
+
+GitHub Actions runs across **4 Python versions** (3.10, 3.11, 3.12, 3.13):
+
+```
+lint (ruff) → type-check (mypy) → test (pytest × 4 versions)
+  → build (wheel) → Docker (multi-stage) → audit (pip-audit)
+```
 
 ---
 
@@ -291,8 +255,8 @@ Any MCP-compatible LLM client can use FindEvil's tools. See `examples/mcp_client
 ### Environment Variables
 
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `GROQ_API_KEY` | — | Groq API key (required for AI features) |
+|---|---|---|
+| `GROQ_API_KEY` | — | Groq API key (optional — all features work without it) |
 | `EVIDENCE_ROOT` | `/evidence` | Default evidence directory |
 | `RESULTS_ROOT` | `/results` | Default results directory |
 
@@ -302,80 +266,123 @@ Any MCP-compatible LLM client can use FindEvil's tools. See `examples/mcp_client
 findevil investigate <evidence> [options]
 
 Options:
-  --output PATH      Output directory for results
-  --task TEXT        Natural language task for AI
+  --output PATH      Output directory
+  --task TEXT        Natural language task description
   --groq-model TEXT  Groq model (default: llama-3.3-70b-versatile)
-  --no-ai            Skip AI report generation
+  --no-ai            Skip AI — use deterministic report generator
   --phase PHASE      Run specific phase only
-  --json             Output results as JSON
+  --json             Output as JSON
   --debug            Enable debug logging
   --no-logo          Skip ASCII logo
 ```
+
+### Tool Configuration (config/tools.toml)
+
+Tool paths and arguments are defined in `config/tools.toml` and loaded at startup:
+
+```toml
+[tools.fls]
+path = "fls"
+args = ["-r", "-p", "{image_path}"]
+description = "List file names in a disk image"
+```
+
+Query at runtime via the `get_tool_config` MCP tool.
+
+---
+
+## 🐳 Docker
+
+```bash
+docker build -t findevil-agent .
+docker run --rm -v /evidence:/evidence findevil-agent investigate /evidence/case.dd
+```
+
+Multi-stage Dockerfile: `python:3.11-slim` builder → `ubuntu:24.04` runtime with sleuthkit, foremost, yara, tshark, bulk-extractor pre-installed.
 
 ---
 
 ## 📦 Project Structure
 
 ```
-findevil-memorygraph/
+findevil-agent/
 ├── src/
-│   ├── cli.py              # Rich CLI entry point
-│   ├── server.py           # MCP server implementation
+│   ├── cli.py                   # Rich CLI entry point
+│   ├── server.py                # MCP server (23 tools, async subprocess, audit, benchmarks)
+│   ├── models.py                # Pydantic data models
+│   ├── __main__.py              # Package entry point
 │   ├── agent/
-│   │   ├── loop.py         # DFIR workflow + MCP client
-│   │   └── groq_client.py  # Groq LLM integration
+│   │   ├── loop.py              # DFIR workflow + evidence pre-validation
+│   │   ├── groq_client.py       # Groq LLM + deterministic fallback
+│   │   ├── output_parser.py     # Balanced-brace JSON extraction
+│   │   ├── tool_selector.py     # 58-entry registry with fallback chains
+│   │   └── prompts.py           # System prompts
 │   └── tools/
-│       ├── __init__.py
-│       ├── tool_defs.py    # 21 tool definitions
-│       └── tool_resolver.py# Cross-platform tool resolution
-├── examples/
-│   └── mcp_client.py       # Reference MCP client
-├── pyproject.toml          # PEP 621 project config
-├── README.md               # This file
-└── LICENSE
+│       ├── filesystem.py        # TSK wrappers (fls, icat, mmls, fsstat, istat)
+│       ├── carving.py           # Foremost carving
+│       ├── memory.py            # Volatility 3 + IOC scanning
+│       ├── registry.py          # Regipy hive parsing
+│       ├── network.py           # TShark PCAP analysis
+│       ├── hashing.py           # hashdeep / openssl
+│       ├── patterns.py          # YARA rules (C2, crypto, webshells, PS abuse)
+│       ├── timeline.py          # MAC timeline export
+│       ├── tool_resolver.py     # Cross-platform shutil.which() resolution
+│       └── __init__.py
+├── config/
+│   ├── tools.toml               # Tool path & argument definitions
+│   └── server.toml              # Server configuration
+├── tests/
+│   ├── test_cli.py              # CLI unit tests (4)
+│   ├── test_forensic_tools.py   # Tool model tests (15)
+│   ├── test_groq_client.py      # Parser/selector/client tests (22)
+│   ├── test_server.py           # MCP server integration tests (11)
+│   ├── test_edge_cases.py       # Edge case integration tests (56)
+│   └── test_workflow.py         # Workflow tests
+├── .github/workflows/ci.yml     # GitHub Actions CI/CD
+├── Dockerfile                   # Multi-stage Docker build
+├── pyproject.toml               # PEP 621 project config
+└── GAP_ANALYSIS.md              # 33-gap audit and closure report
 ```
 
 ---
 
-## 🛠️ Development
+## 🔬 Gap Analysis
 
-```bash
-# Install in editable mode
-pip install -e .
+All 33 identified gaps have been closed across 13 phases:
 
-# Install dev dependencies
-pip install pytest pytest-asyncio rich pyfiglet
+| Phase | Area | Key Fixes |
+|---|---|---|
+| 1 | Critical Logic | Agent exit criteria, phantom tool calls, FALLBACKS typo, real IOCs |
+| 2 | Security | Async tool execution, registry path oracle, memory detection, carve validation |
+| 3 | Performance | Lazy imports, cached resolution, buffered audit |
+| 4 | Testing | 41 new pytest tests, benchmark scoring |
+| 5 | Polish | Token tracking, multi-stage Docker, balanced-brace JSON |
+| 6 | Graceful Degradation | No API key required — all features work |
+| 7 | CI/CD | GitHub Actions (5 jobs, 4 Python versions) |
+| 8 | Confidence Scoring | Per-tool CONFIRMED/INFERRED/UNVERIFIED |
+| 9 | Evidence Validation | Pre-check at loop start |
+| 10 | Edge Cases | 50+ parametrized pytest tests |
+| 11 | Logo | Professional DFIR-themed ASCII art |
+| 12 | Config | config/tools.toml integrated |
+| 13 | Types | All 22 handlers annotated |
 
-# Generate architecture assets
-pip install cairosvg          # SVG → PNG rendering
-python docs/generate-png.py   # Generate architecture.png
+See [GAP_ANALYSIS.md](GAP_ANALYSIS.md) for the full report.
 
-# Run tests
-pytest tests/
+---
 
-# Lint
-ruff check src/
-```
+## 📜 License
+
+MIT License — see [LICENSE](LICENSE).
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feat/amazing-feature`
-3. Commit changes: `git commit -m "feat: add amazing feature"`
-4. Push: `git push origin feat/amazing-feature`
-5. Open a Pull Request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE)
-
----
-
-<p align="center">
-  <b>FindEvil</b> — Autonomous DFIR Analysis Agent<br>
-  <sub>Powered by Groq AI · Sleuthkit · YARA · Volatility · TShark</sub>
-</p>
+<div align="center">
+  <strong>FindEvil Agent v2.1.1</strong><br>
+  <sub>Autonomous DFIR Analysis · Memory · Disk · Registry · Network · Carving · YARA</sub>
+</div>
