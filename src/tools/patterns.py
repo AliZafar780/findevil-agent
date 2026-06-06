@@ -147,7 +147,9 @@ def scan_yara(
     except subprocess.TimeoutExpired:
         return PatternResult(success=False, error="YARA scan timed out after 120s")
     except FileNotFoundError:
-        return PatternResult(success=False, error="yara not found. Install: sudo apt-get install yara")
+        return PatternResult(
+            success=False, error="yara not found. Install: sudo apt-get install yara"
+        )
     except Exception as e:
         return PatternResult(success=False, error=str(e))
 

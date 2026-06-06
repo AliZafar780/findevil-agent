@@ -57,6 +57,3 @@ def compute_hash(file_path: str, algorithm: str = "sha256") -> HashResult:
         return HashResult(success=False, error=f"{algorithm}sum not found")
     except Exception as e:
         return HashResult(success=False, error=str(e))
-
-
-

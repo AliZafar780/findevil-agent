@@ -65,7 +65,9 @@ def carve_files(
     except subprocess.TimeoutExpired:
         return CarvingResult(success=False, error="foremost timed out after 600s")
     except FileNotFoundError:
-        return CarvingResult(success=False, error="foremost not found. Install: sudo apt-get install foremost")
+        return CarvingResult(
+            success=False, error="foremost not found. Install: sudo apt-get install foremost"
+        )
     except Exception as e:
         return CarvingResult(success=False, error=str(e))
 

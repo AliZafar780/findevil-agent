@@ -358,7 +358,9 @@ def _validate_evidence_path(path: str) -> Optional[str]:
     Does NOT leak the requested path in error messages (privacy/security).
     Logs all violations to the security audit trail."""
     if not path or not path.strip():
-        _log_security_violation("empty_path", path or "", "Path argument was empty or whitespace-only")
+        _log_security_violation(
+            "empty_path", path or "", "Path argument was empty or whitespace-only"
+        )
         return "Path cannot be empty"
     # Reject null bytes and control characters
     if "\x00" in path or any(ord(c) < 32 for c in path):
@@ -366,7 +368,9 @@ def _validate_evidence_path(path: str) -> Optional[str]:
         return "Path contains invalid characters"
     # Limit path length
     if len(path) > 4096:
-        _log_security_violation("path_too_long", path, f"Path length {len(path)} exceeds 4096 limit")
+        _log_security_violation(
+            "path_too_long", path, f"Path length {len(path)} exceeds 4096 limit"
+        )
         return "Path too long"
     try:
         resolved = Path(path).resolve()
@@ -394,7 +398,9 @@ def _validate_output_dir(path: str) -> Optional[str]:
     try:
         resolved = Path(path).resolve()
         if not str(resolved).startswith(str(RESULTS_ROOT.resolve())):
-            _log_security_violation("output_dir_traversal", path, f"Resolves outside results root: {RESULTS_ROOT}")
+            _log_security_violation(
+                "output_dir_traversal", path, f"Resolves outside results root: {RESULTS_ROOT}"
+            )
             return f"Output directory must be under results root ({RESULTS_ROOT}): {path}"
         return None
     except Exception as e:
@@ -408,7 +414,11 @@ def _safe_path_join(base: Path, subdir: str) -> Optional[Path]:
         return base
     # Reject path traversal characters
     if ".." in subdir or "~" in subdir or subdir.startswith("/"):
-        _log_security_violation("path_traversal_join", subdir, f"Attempted traversal with '..', '~', or absolute path against {base}")
+        _log_security_violation(
+            "path_traversal_join",
+            subdir,
+            f"Attempted traversal with '..', '~', or absolute path against {base}",
+        )
         return None
     try:
         joined = (base / subdir).resolve()
@@ -416,7 +426,9 @@ def _safe_path_join(base: Path, subdir: str) -> Optional[Path]:
         joined.relative_to(base.resolve())
         return joined
     except (ValueError, Exception):
-        _log_security_violation("path_join_error", subdir, f"Failed to safely join with base {base}")
+        _log_security_violation(
+            "path_join_error", subdir, f"Failed to safely join with base {base}"
+        )
         return None
 
 

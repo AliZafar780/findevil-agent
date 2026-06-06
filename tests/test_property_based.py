@@ -6,7 +6,6 @@ Tests invariant properties of forensic tool functions.
 from hypothesis import given, strategies as st, settings
 from src.tools.tool_resolver import find_tool
 
-
 # ── Tool Resolution Properties ──────────────────────────────────
 
 

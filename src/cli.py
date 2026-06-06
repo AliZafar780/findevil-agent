@@ -214,7 +214,12 @@ def main() -> None:
         help="Run a single forensic tool directly",
         description="Execute one forensic tool against evidence with full control",
     )
-    single.add_argument("tool_name", nargs="?", default=None, help="Name of the tool to run (omit to list available tools)")
+    single.add_argument(
+        "tool_name",
+        nargs="?",
+        default=None,
+        help="Name of the tool to run (omit to list available tools)",
+    )
     single.add_argument("--image", help="Path to evidence image")
     single.add_argument("--inode", type=int, default=0, help="Inode number")
     single.add_argument("--offset", type=int, default=0, help="Partition offset")

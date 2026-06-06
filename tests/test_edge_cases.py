@@ -31,6 +31,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 # conftest.py provides: mcp_client (fixture), test_img (fixture)
 # We import shared helpers directly for clarity.
 from helpers import _call, HAS_EVIDENCE
+
 # ──────────────────────────────────────────────────────────────────
 
 # ═════════════════════════════════════════════════════════════════

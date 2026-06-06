@@ -111,6 +111,3 @@ def list_protocols(pcap_path: str) -> NetworkResult:
         )
     except Exception as e:
         return NetworkResult(success=False, error=str(e))
-
-
-

@@ -100,6 +100,3 @@ def query(hive_path: str, key: str = "/", recursive: bool = False) -> RegistryRe
             return RegistryResult(success=False, error=str(e))
     except Exception as e:
         return RegistryResult(success=False, error=str(e))
-
-
-

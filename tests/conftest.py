@@ -33,6 +33,7 @@ async def mcp_client():
         await _CLIENT_INSTANCE.start()
         # Give the server a moment to settle after init handshake
         import asyncio
+
         await asyncio.sleep(0.1)
 
     yield _CLIENT_INSTANCE

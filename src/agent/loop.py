@@ -31,15 +31,28 @@ EVIDENCE_TYPE_MAP: dict[str, list[str]] = {
 EVIDENCE_TO_TOOLS: dict[str, list[str]] = {
     "memory": ["mem_list_processes", "mem_analyze", "mem_scan_network", "mem_dump_cmdline"],
     "disk": [
-        "fs_partition_scan", "fs_list_files", "fs_filesystem_info", "fs_extract_file",
-        "carve_files", "extract_features", "analyze_binary",
+        "fs_partition_scan",
+        "fs_list_files",
+        "fs_filesystem_info",
+        "fs_extract_file",
+        "carve_files",
+        "extract_features",
+        "analyze_binary",
     ],
     "pcap": ["pcap_analyze", "pcap_list_protocols"],
     "registry": ["reg_analyze_hive"],
     "any": [
-        "list_evidence", "verify_hash", "compute_hash", "scan_yara", "search_text_patterns",
-        "get_audit_logs", "get_security_logs", "fs_strings", "timeline_build",
-        "timeline_filter", "extract_features",
+        "list_evidence",
+        "verify_hash",
+        "compute_hash",
+        "scan_yara",
+        "search_text_patterns",
+        "get_audit_logs",
+        "get_security_logs",
+        "fs_strings",
+        "timeline_build",
+        "timeline_filter",
+        "extract_features",
     ],
 }
 
@@ -392,10 +405,7 @@ class DFIRWorkflow:
                     for ftype in fallback_order:
                         if ftype == current_type:
                             continue
-                        candidates = [
-                            t for t in _get_compatible_tools(ftype)
-                            if t not in fallbacks
-                        ]
+                        candidates = [t for t in _get_compatible_tools(ftype) if t not in fallbacks]
                         if candidates:
                             logger.info(
                                 f"  ↪ Type escalation: {current_type} -> {ftype}, "
@@ -422,7 +432,9 @@ class DFIRWorkflow:
                 )
                 if llm_decision:
                     logger.info(f"  🤖 LLM tool selection: {llm_decision}")
-                    suggested = [t.get("name", t) if isinstance(t, dict) else t for t in llm_decision]
+                    suggested = [
+                        t.get("name", t) if isinstance(t, dict) else t for t in llm_decision
+                    ]
                     # Filter out tools incompatible with the current evidence type
                     if self._evidence_path:
                         evidence_type = _detect_evidence_type(self._evidence_path)
@@ -787,7 +799,7 @@ class SimpleMCPClient:
         )
         self.proc.stdin.write(init.encode())  # type: ignore[union-attr]
         await self.proc.stdin.drain()  # type: ignore[union-attr]
-        line: bytes = await asyncio.wait_for(self.proc.stdout.readline(), timeout=10)  # type: ignore[union-attr]
+        line: bytes = await asyncio.wait_for(self.proc.stdout.readline(), timeout=30)  # type: ignore[union-attr]
         return line
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
