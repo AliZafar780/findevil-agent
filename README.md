@@ -538,6 +538,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ---
 
 <div align="center">
-  <strong>FindEvil Agent v2.1.4</strong><br>
+  <strong>FindEvil Agent v2.1.5</strong><br>
   <sub>Autonomous DFIR Analysis · Memory · Disk · Registry · Network · Carving · YARA</sub>
 </div>

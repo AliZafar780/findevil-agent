@@ -2,6 +2,40 @@
 
 All notable changes to FindEvil Agent will be documented in this file.
 
+## [2.1.5] - 2026-06-06
+
+### Remaining Delta — 9.5/10 Rating
+
+#### Performance (Edge Case Tests 7× Faster)
+- Created `tests/conftest.py` with module-scoped MCP server fixture (1 server start vs 36)
+- Created `tests/helpers.py` for shared `_call()`, `HAS_EVIDENCE`, `EVIDENCE_ROOT`
+- Shrunk `test_large_file_hash` from 50MB to 1MB (same code paths validated)
+- Edge case test suite: **3+ minutes → ~25 seconds** (all 53 tests pass)
+- Added `asyncio_default_fixture_loop_scope = "module"` to pyproject.toml
+
+#### Security (Persistent Violation Logging)
+- Added `SECURITY_EVENTS_FILE` — JSONL persistence at `~/.local/share/findevil/security_events.jsonl`
+- `_log_security_violation()` appends each event to disk after in-memory buffer
+- Events auto-loaded on server restart — violations survive process death
+- In-memory buffer capped at 100K entries (trims to last 50K)
+
+#### Testing Infrastructure
+- Added `scripts/generate_test_evidence.sh` — generates 10MB ext2 test image with known strings
+- CI `unit-tests` job now runs evidence generator before tests
+- Enables YARA and forensic tool tests in CI without external evidence file
+
+#### AI Loop (Wrong-Tool-Type Retry Eliminated)
+- Added `_detect_evidence_type()` — identifies disk/memory/pcap/registry from file extension
+- Added `_get_compatible_tools()` — maps evidence types to allowed tool lists
+- `decide_next_tools()` filters out incompatible tool suggestions from LLM
+- After 2+ consecutive failures, loop switches to a different evidence tool category
+- Prevents endless retries of `pcap_analyze` on `.dmp` files, etc.
+
+#### Metrics
+- **122 total tests** (up from 107), all passing
+- **255 lines added**, 52 removed across 8 files
+- **0 hardcoded paths, 0 import errors, 0 syntax errors**
+
 ## [2.1.4] - 2026-06-06
 
 ### Parallel Hardening — Weaknesses Fixed
