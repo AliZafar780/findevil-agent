@@ -429,6 +429,14 @@ def _safe_path_join(base: Path, subdir: str) -> Optional[Path]:
     """Safely join a subdirectory to base path, preventing traversal attacks."""
     if not subdir or subdir.strip() == "":
         return base
+    # Reject null bytes and control characters (defense-in-depth)
+    if "\x00" in subdir or any(ord(c) < 32 for c in subdir):
+        _log_security_violation(
+            "invalid_chars_join",
+            subdir,
+            "Contains null byte or control characters in path join",
+        )
+        return None
     # Reject path traversal characters
     if ".." in subdir or "~" in subdir or subdir.startswith("/"):
         _log_security_violation(
@@ -458,7 +466,7 @@ server = Server(SERVER_NAME)
 
 @server.list_tools()  # type: ignore[untyped-decorator, no-untyped-call]
 async def list_tools() -> list[Tool]:
-    """Register all 21 forensic tools with typed schemas."""
+    """Register all 23 forensic tools with typed schemas."""
     return [
         # ── File System Analysis ──────────────────────────────────
         Tool(
@@ -850,6 +858,35 @@ async def list_tools() -> list[Tool]:
                         "default": 100,
                     },
                 },
+            },
+        ),
+        # ── Cross-Evidence Correlation ──────────────────────────────
+        Tool(
+            name="correlate_evidence",
+            description="Cross-reference findings between a disk image and a memory capture. Runs parallel process-file, timeline, network-disk, and hash-identity analyses with independent timeouts.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "disk_path": {
+                        "type": "string",
+                        "description": "Path to disk image",
+                    },
+                    "memory_path": {
+                        "type": "string",
+                        "description": "Path to memory capture file",
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "Output directory for correlation results (under /results)",
+                        "default": "/results/correlations",
+                    },
+                    "analysis_timeout": {
+                        "type": "number",
+                        "description": "Timeout per analysis phase in seconds",
+                        "default": 60.0,
+                    },
+                },
+                "required": ["disk_path", "memory_path"],
             },
         ),
     ]
@@ -2476,7 +2513,7 @@ async def _handle_get_tool_config(args: dict[str, Any]) -> list[TextContent]:
 
 async def _handle_audit_logs(args: dict[str, Any]) -> list[TextContent]:
     """Return audit logs from current session."""
-    limit = min(args.get("limit", 100), 10000)
+    limit = max(1, min(args.get("limit", 100), 10000))
     logs = (await _get_audit_logs())[-limit:]
     async with _audit_lock:
         has_entries = bool(_audit_entries)
@@ -2499,7 +2536,7 @@ async def _handle_audit_logs(args: dict[str, Any]) -> list[TextContent]:
 
 async def _handle_security_logs(args: dict[str, Any]) -> list[TextContent]:
     """Return security violation logs from current session."""
-    limit = min(args.get("limit", 100), 10000)
+    limit = max(1, min(args.get("limit", 100), 10000))
     logs = (await _get_security_logs())[-limit:]
     return [
         TextContent(

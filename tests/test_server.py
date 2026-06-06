@@ -98,17 +98,17 @@ class TestMCPServer:
 
     @pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
     async def test_extract_file(self):
-        """Extract hello.txt at inode 20."""
+        """Extract readme.txt at inode 13."""
 
         async def run(client):
             r = await self._call_tool(
-                client, "fs_extract_file", {"image_path": self.TEST_IMG, "offset": 0, "inode": 20}
+                client, "fs_extract_file", {"image_path": self.TEST_IMG, "offset": 0, "inode": 13}
             )
             assert r["success"] is True
             preview = r.get("preview", "")
             assert (
-                "Hello from Find Evil" in preview
-            ), f"Expected 'Hello from Find Evil', got: {preview[:100]}"
+                "Find Evil Agent forensic analysis system" in preview
+            ), f"Expected 'Find Evil Agent forensic analysis system', got: {preview[:100]}"
 
         await self._run_server_test(run)
 

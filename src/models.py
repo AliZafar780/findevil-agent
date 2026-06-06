@@ -2,7 +2,7 @@
 Shared Pydantic data models for forensic analysis results.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
@@ -34,7 +34,7 @@ class Finding(BaseModel):
     tool_used: str
     tool_arguments: dict[str, Any] = {}
     raw_output_snippet: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     iteration: int = 0
     source_evidence: str = ""
 
@@ -48,7 +48,7 @@ class ToolExecution(BaseModel):
     duration_ms: int
     error: Optional[str] = None
     output_summary: Optional[str] = None
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class AuditReport(BaseModel):

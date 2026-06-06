@@ -94,7 +94,7 @@ findevil tool fs_list_files --image test.dd
 ├────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐   ┌──────────────┐   ┌────────────────────────┐ │
 │  │  CLI (rich)   │   │ MCP Server   │   │ Groq AI / Deterministic│ │
-│  │  findevil     │──▶│ 22 Tools API │──▶│ Tool Selector + Report │ │
+│  │  findevil     │──▶│ 23 Tools API │──▶│ Tool Selector + Report │ │
 │  └──────────────┘   └──────┬───────┘   └───────────┬────────────┘ │
 │                            │                        │              │
 │  ┌─────────────────────────┴──────────────────────┐ │              │
@@ -388,7 +388,7 @@ All 33 identified gaps have been closed across 13 phases:
 | 10 | Edge Cases | 50+ parametrized pytest tests |
 | 11 | Logo | Professional DFIR-themed ASCII art |
 | 12 | Config | config/tools.toml integrated |
-| 13 | Types | All 22 handlers annotated |
+| 13 | Types | All 23 handlers annotated |
 
 See [GAP_ANALYSIS.md](GAP_ANALYSIS.md) for the full report.
 

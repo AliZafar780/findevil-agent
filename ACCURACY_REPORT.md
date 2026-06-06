@@ -10,7 +10,7 @@
 
 ## Executive Summary
 
-FindEvil Agent is a Model Context Protocol (MCP) server that exposes **22 typed forensic tools** to LLM agents for autonomous digital forensics analysis. This report assesses the project's **accuracy** (do the tools and tests do what they claim?) and **security** (can the AI break the evidence?).
+FindEvil Agent is a Model Context Protocol (MCP) server that exposes **23 typed forensic tools** to LLM agents for autonomous digital forensics analysis. This report assesses the project's **accuracy** (do the tools and tests do what they claim?) and **security** (can the AI break the evidence?).
 
 **Headline numbers:**
 
@@ -20,13 +20,13 @@ FindEvil Agent is a Model Context Protocol (MCP) server that exposes **22 typed 
 | Test pass rate (this environment) | **115 / 122 (94.3%)** | 5 local-only failures + 2 pre-existing flakes |
 | Test pass rate (CI / clean environment) | **122 / 122 (100%)** | After `scripts/generate_test_evidence.sh` runs |
 | Property-based tests | **15** | Hypothesis-generated fuzz tests |
-| MCP tools exposed | **22** | All typed, all Pydantic-validated |
+| MCP tools exposed | **23** | All typed, all Pydantic-validated |
 | Architectural guardrails | **6 distinct layers** | None bypassable by prompt |
 | Prompt-only guardrails | **1** | Tool-compatibility hint |
 | Security events captured during testing | **993+** | In `~/.local/share/findevil/security_events.jsonl` |
 | Lines of security-critical code in `src/server.py` | **~210** | Path validation, audit, sanitization |
 
-**Key finding:** The security model is **architectural, not prompt-based**. An adversarial LLM cannot modify evidence because (1) the LLM is exposed only to 22 typed functions, (2) every path argument is checked against `EVIDENCE_ROOT` in Python before any tool runs, (3) write operations are confined to `RESULTS_ROOT`, and (4) the audit log is `asyncio.Lock`-guarded JSONL appended to disk. The LLM has no way to invoke `subprocess.run`, `os.system`, or `open(path, 'w')` on the evidence — those functions simply don't exist in its tool surface.
+**Key finding:** The security model is **architectural, not prompt-based**. An adversarial LLM cannot modify evidence because (1) the LLM is exposed only to 23 typed functions, (2) every path argument is checked against `EVIDENCE_ROOT` in Python before any tool runs, (3) write operations are confined to `RESULTS_ROOT`, and (4) the audit log is `asyncio.Lock`-guarded JSONL appended to disk. The LLM has no way to invoke `subprocess.run`, `os.system`, or `open(path, 'w')` on the evidence — those functions simply don't exist in its tool surface.
 
 ---
 
@@ -99,7 +99,7 @@ A central claim of FindEvil Agent is that it reduces LLM hallucination. The mech
 
 | # | Mechanism | Implementation | Hallucination class it prevents |
 |---|---|---|---|
-| 1 | **Tool compatibility filtering** | `_detect_evidence_type()` in `src/agent/loop.py:23-37` maps file extensions → evidence categories (disk / memory / pcap / registry / artifact). `_get_compatible_tools()` returns the allowed tool list (12–18 of 22 tools). The LLM is *prompted* to pick from this list, and incompatible picks are *filtered* before execution. | "Run `pcap_analyze` on a `.dmp` memory dump" |
+| 1 | **Tool compatibility filtering** | `_detect_evidence_type()` in `src/agent/loop.py:23-37` maps file extensions → evidence categories (disk / memory / pcap / registry / artifact). `_get_compatible_tools()` returns the allowed tool list (12–18 of 23 tools). The LLM is *prompted* to pick from this list, and incompatible picks are *filtered* before execution. | "Run `pcap_analyze` on a `.dmp` memory dump" |
 | 2 | **Structured Pydantic results** | Every tool returns a `BaseModel` (HashResult, MemoryResult, NetworkResult, etc.) with declared fields. The agent does not free-form-parse the LLM's text — it parses typed JSON. | "The LLM said there were 47 connections, but really there were 12" |
 | 3 | **Type escalation on failure** | `src/agent/loop.py:281-294` — after `consecutive_failures >= 2`, the loop calls `fallback_order = ["any", "disk", "memory", "pcap", "registry"]` and tries a *different evidence category*. This breaks the "LLM loops forever on the wrong tool" failure mode. | "Re-trying `mem_list_processes` 30 times on a disk image" |
 | 4 | **Confidence scoring** | `_assess_confidence()` in `src/agent/loop.py:415-462` returns CONFIRMED / INFERRED / UNVERIFIED per finding, based on data-quality thresholds (e.g., YARA match needs ≥1 match to be CONFIRMED; filesystem_info needs ≥50 chars of `fsstat_output`). Findings cannot be over-promoted. | "The LLM called a single-process 'suspicious' when the data was normal" |
@@ -124,7 +124,7 @@ EVIDENCE_TO_TOOLS = {
 }
 ```
 
-| Evidence type | Specific tools | "Any" tools | Total | Out of 22 |
+| Evidence type | Specific tools | "Any" tools | Total | Out of 23 |
 |---|---|---|---|---|
 | memory | 4 | 11 | **15** | 7 hidden |
 | disk | 7 | 11 | **18** | 4 hidden |
@@ -224,7 +224,7 @@ def _validate_output_dir(path: str) -> Optional[str]:
 
 **Attempt:** Have the LLM execute arbitrary shell commands.
 
-**Defense:** **There is no path to do this.** The MCP server exposes exactly 22 typed functions in the `list_tools` registry (`src/server.py:418-707`). The tool list does not include `execute_shell_cmd`, `run_command`, `eval`, `exec`, or any equivalent. The MCP `tools/call` router (`call_tool()` line 466) uses a hardcoded `handler_map` dict with exactly 22 entries — there is no reflection, no `getattr`, no `__import__` on the LLM-controlled `name` parameter. The LLM can only name a function from the registry; an unknown name returns `ValueError("Unknown tool: '...'")` (line 545).
+**Defense:** **There is no path to do this.** The MCP server exposes exactly 23 typed functions in the `list_tools` registry (`src/server.py:418-707`). The tool list does not include `execute_shell_cmd`, `run_command`, `eval`, `exec`, or any equivalent. The MCP `tools/call` router (`call_tool()` line 466) uses a hardcoded `handler_map` dict with exactly 23 entries — there is no reflection, no `getattr`, no `__import__` on the LLM-controlled `name` parameter. The LLM can only name a function from the registry; an unknown name returns `ValueError("Unknown tool: '...'")` (line 545).
 
 **The LLM literally cannot call `subprocess.run` because that function is not in the tool surface.** It is not even imported into the namespace the LLM can see (the MCP protocol serializes only the registered tool schemas).
 
@@ -283,13 +283,13 @@ The single most important distinction in this codebase is between guardrails tha
 | 1 | **Path validation** (`_validate_evidence_path`) | Architectural | Python `Path.resolve().relative_to()` + null byte + control char checks | **NO** — runs before any tool |
 | 2 | **Output dir confinement** (`_validate_output_dir`) | Architectural | `str(resolved).startswith(RESULTS_ROOT)` | **NO** — runs before `mkdir` |
 | 3 | **Null-byte rejection** | Architectural | `"\x00" in path` + `ord(c) < 32` | **NO** — string check, no LLM involvement |
-| 4 | **Tool exposure** (22 typed functions) | Architectural | MCP `list_tools` returns a fixed registry; `handler_map` is hardcoded | **NO** — unexposed functions don't exist in the LLM's world |
+| 4 | **Tool exposure** (23 typed functions) | Architectural | MCP `list_tools` returns a fixed registry; `handler_map` is hardcoded | **NO** — unexposed functions don't exist in the LLM's world |
 | 5 | **Magic-byte evidence type detection** (`_is_memory_capture`, `_is_registry_hive`) | Architectural | Read 4–64 bytes, check against `b"PAGE"`, `b"regf"`, `b"\x7fELF"` | **NO** — runs server-side before tool body |
 | 6 | **Audit logging** (`_audit_log`, `_log_security_violation`) | Architectural | `asyncio.Lock` + `open(..., "a")` JSONL | **NO** — LLM has no tool to clear logs |
 | 7 | **Concurrent call serialization** (`_call_lock`, `_audit_lock`) | Architectural | `asyncio.Lock` | **NO** — Python-level mutex |
 | 8 | **Output size truncation** (`MAX_OUTPUT_CHARS = 100_000`) | Architectural | `result.stdout[:MAX_OUTPUT_CHARS]` | **NO** — Python slice |
 | 9 | **Subprocess timeout** (`MAX_TIMEOUT = 600`) | Architectural | `subprocess.run(timeout=...)` | **NO** — Python timeout |
-| 10 | **Tool-compatibility filter** (in `loop.py`) | Prompt-helper | `_get_compatible_tools()` is *suggested* to the LLM in the prompt; the LLM could in theory name any of 22 tools, but the magic-byte check (#5) rejects wrong types at execution | **YES** — but bounded by #5 |
+| 10 | **Tool-compatibility filter** (in `loop.py`) | Prompt-helper | `_get_compatible_tools()` is *suggested* to the LLM in the prompt; the LLM could in theory name any of 23 tools, but the magic-byte check (#5) rejects wrong types at execution | **YES** — but bounded by #5 |
 
 **Key insight for judges:** *All* the security-critical guardrails (#1–#9) are architectural. The only prompt-based guardrail (#10) is an *optimization* (don't waste iterations on wrong tools), not a security boundary. Even if the LLM ignores #10, the magic-byte detection (#5) catches the error at execution. This is **defense in depth**.
 
@@ -314,7 +314,7 @@ This is what makes the system suitable for **forensic use** — the chain of cus
 
 ### 5.1 Read-only on evidence
 
-**All 22 tools that touch evidence open files with `open(path, "rb")` or via `subprocess.run` with the validated path as an argv entry.** A search of `src/server.py` confirms:
+**All 23 tools that touch evidence open files with `open(path, "rb")` or via `subprocess.run` with the validated path as an argv entry.** A search of `src/server.py` confirms:
 - `open(path, "rb")` appears in `_is_memory_capture` (line 935), `_is_registry_hive` (line 1021), and the `_TOOL_CONFIG` loader (line 79) — all read-only.
 - There is **no `open(path, "w")`**, no `os.remove`, no `shutil.copy` on any user-supplied path.
 - The only `open` with a writable mode is `_flush_audit_buffer` (line 119) which writes to `_audit_log_path` (under `/results/audit/`, never `/evidence/`) and `_log_security_violation` (line 169) which appends to `~/.local/share/findevil/security_events.jsonl` — both outside the evidence root.
@@ -337,7 +337,7 @@ The MCP server exposes typed functions, not `execute_shell_cmd`. The LLM cannot:
 - Use Python `eval`/`exec`
 - Construct arbitrary argv
 
-The 22 tool functions are the **only** way the LLM can cause side effects.
+The 23 tool functions are the **only** way the LLM can cause side effects.
 
 ### 5.4 Audit trail
 
@@ -379,7 +379,7 @@ Path traversal attempts, null bytes, control chars, path-too-long, symlink loops
 │  │  call_tool()                                                 │  │
 │  │    ├─ _call_lock (serializes all calls)                       │  │
 │  │    ├─ Argument validation: null bytes, length, int range      │  │
-│  │    ├─ handler_map[name]  ←  hardcoded dict of 22 fns         │  │
+│  │    ├─ handler_map[name]  ←  hardcoded dict of 23 fns         │  │
 │  │    │                                                          │  │
 │  │    ├─ _handle_*(args)                                         │  │
 │  │    │    ├─ _validate_evidence_path(path)  ← EVIDENCE_ROOT    │  │
@@ -470,7 +470,7 @@ Protocol SIFT (a hypothetical POC referenced in the design discussion; not a rea
 
 | Dimension | Protocol SIFT (generic) | FindEvil Agent |
 |---|---|---|
-| **Tool surface** | `bash`, `python` — full language | 22 typed forensic functions |
+| **Tool surface** | `bash`, `python` — full language | 23 typed forensic functions |
 | **Path validation** | Prompt-based ("don't read /etc/passwd") | Python `Path.relative_to(EVIDENCE_ROOT)` |
 | **Evidence integrity** | Relies on model behaving | `_validate_evidence_path` blocks read of any file outside `/evidence` |
 | **Output confinement** | None — `bash > /etc/foo` works | `_validate_output_dir` blocks write to anywhere except `/results/` |
@@ -539,7 +539,7 @@ The current model is strong, but two minor improvements would make it stronger s
 
 ## 9. Conclusion
 
-FindEvil Agent v2.1.5 ships **22 typed MCP tools** for DFIR, with **122 automated tests** (94.3% pass rate locally, 100% on a clean CI environment), **15 Hypothesis property-based tests**, and a **6-layer architectural security model** that no LLM prompt injection can bypass.
+FindEvil Agent v2.1.5 ships **23 typed MCP tools** for DFIR, with **122 automated tests** (94.3% pass rate locally, 100% on a clean CI environment), **15 Hypothesis property-based tests**, and a **6-layer architectural security model** that no LLM prompt injection can bypass.
 
 The test suite covers not just "does it work" but "does it refuse to be evil":
 - 8 path-traversal scenarios blocked
@@ -595,7 +595,7 @@ For a forensic tool, this is the right architecture. Evidence integrity is a leg
 | Token budget cap | `src/agent/groq_client.py` | (per v2.1.1 changelog) | — |
 | Evidence file generator | `scripts/generate_test_evidence.sh` | (full file) | 1–38 |
 
-## Appendix C — MCP tool inventory (22 tools)
+## Appendix C — MCP tool inventory (23 tools)
 
 | # | Tool name | Category | Evidence type | Backed by |
 |---|---|---|---|---|
@@ -623,7 +623,7 @@ For a forensic tool, this is the right architecture. Evidence integrity is a leg
 | 22 | `get_audit_logs` | Audit | any | Internal `_audit_entries` |
 | 23 | `get_security_logs` | Audit | any | Internal `_security_events` |
 
-(Note: the README says 23, the `list_tools` function in `src/server.py` registers 22. The discrepancy is the `get_security_logs` tool added in v2.1.4 — README is correct, server code's docstring is stale.)
+(Note: As of v2.1.5, all 23 tools are registered. The `list_tools` function in `src/server.py` now correctly documents 23 forensic tools.)
 
 ---
 

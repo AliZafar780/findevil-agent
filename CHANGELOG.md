@@ -176,7 +176,7 @@ All notable changes to FindEvil Agent will be documented in this file.
 - `asyncio.Lock` for concurrent call safety
 
 ### Added
-- 21 MCP tools across 8 forensic categories
+- 23 MCP tools across 8 forensic categories
 - Groq AI integration for autonomous tool selection
 - Audit trail system (JSONL logging)
 - Synthetic evidence: disk (ext2), memory (ELF), network (PCAP)

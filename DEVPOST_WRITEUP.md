@@ -20,11 +20,11 @@ license: MIT
 
 ## 1. What it does
 
-**FindEvil Agent** is a fully autonomous digital forensics and incident response (DFIR) investigation engine. You point it at a disk image, memory dump, PCAP, or registry hive, and it drives a 22-tool forensic pipeline end-to-end — from evidence integrity verification through partition discovery, filesystem traversal, file carving, YARA scanning, memory process extraction, registry persistence hunting, and protocol-level network analysis — culminating in a structured, confidence-scored incident report. There is no GUI to babysit and no prompt to hand-engineer. The agent reasons, selects tools, executes, observes, corrects, and reports, the same way a senior DFIR analyst would, but at machine speed and without ever needing to sleep.
+**FindEvil Agent** is a fully autonomous digital forensics and incident response (DFIR) investigation engine. You point it at a disk image, memory dump, PCAP, or registry hive, and it drives a 23-tool forensic pipeline end-to-end — from evidence integrity verification through partition discovery, filesystem traversal, file carving, YARA scanning, memory process extraction, registry persistence hunting, and protocol-level network analysis — culminating in a structured, confidence-scored incident report. There is no GUI to babysit and no prompt to hand-engineer. The agent reasons, selects tools, executes, observes, corrects, and reports, the same way a senior DFIR analyst would, but at machine speed and without ever needing to sleep.
 
-The agent is a **standalone CLI** (`findevil investigate evidence.dd`) but is also exposed as a **Model Context Protocol server** with 22 typed forensic functions. That second surface is the substantive one: any MCP-compatible LLM client — Claude Code, custom OpenCode agents, in-house IR copilots — can call `fs_list_files`, `carve_files`, `mem_dump_cmdline`, `reg_analyze_hive`, `pcap_analyze`, or `scan_yara` with the same tool-calling semantics they'd use for `Read` or `Bash`, but with **architectural** guarantees those primitives cannot offer. Every forensic tool is typed (Pydantic-validated input/output schemas, exposed through MCP's `inputSchema`), every evidence path is checked against an allow-listed root before any subprocess spawns, every tool output is bounded and sanitized, and every tool call is written to a JSONL audit trail that survives process death. We are not bolting safety onto a shell — we are **structurally incapable of running unsafe commands** because the agent never sees a shell.
+The agent is a **standalone CLI** (`findevil investigate evidence.dd`) but is also exposed as a **Model Context Protocol server** with 23 typed forensic functions. That second surface is the substantive one: any MCP-compatible LLM client — Claude Code, custom OpenCode agents, in-house IR copilots — can call `fs_list_files`, `carve_files`, `mem_dump_cmdline`, `reg_analyze_hive`, `pcap_analyze`, or `scan_yara` with the same tool-calling semantics they'd use for `Read` or `Bash`, but with **architectural** guarantees those primitives cannot offer. Every forensic tool is typed (Pydantic-validated input/output schemas, exposed through MCP's `inputSchema`), every evidence path is checked against an allow-listed root before any subprocess spawns, every tool output is bounded and sanitized, and every tool call is written to a JSONL audit trail that survives process death. We are not bolting safety onto a shell — we are **structurally incapable of running unsafe commands** because the agent never sees a shell.
 
-This is the architecture Anthropic's *Building Effective Agents* essay calls Approach #2: a custom MCP server with typed, constrained primitives in place of a generic tool. The 22 functions are small, composable, and individually auditable. Path traversal is blocked in Python at `_validate_evidence_path()` with `Path.relative_to(EVIDENCE_ROOT)` — not in a system prompt the model can be talked out of. Output directories for carved files are confined to `RESULTS_ROOT` and verified before any file is created. Memory dumps are validated by magic bytes (`\x7fELF` + `ET_CORE`, `PAGE`, or `.mem/.vmem/.dmp` + size ≥ 5 MB) before Volatility is invoked. Registry hives require a `regf` magic header. PCAPs are checked before tshark runs. The agent *cannot* escalate from a forensic tool to a raw command — the surface doesn't include one. The reference baseline for this hackathon is the SIFT Workstation, and the question we set out to answer was: *what does it look like to make the SIFT toolchain agent-callable in a way that a security-cleared reviewer can approve?*
+This is the architecture Anthropic's *Building Effective Agents* essay calls Approach #2: a custom MCP server with typed, constrained primitives in place of a generic tool. The 23 functions are small, composable, and individually auditable. Path traversal is blocked in Python at `_validate_evidence_path()` with `Path.relative_to(EVIDENCE_ROOT)` — not in a system prompt the model can be talked out of. Output directories for carved files are confined to `RESULTS_ROOT` and verified before any file is created. Memory dumps are validated by magic bytes (`\x7fELF` + `ET_CORE`, `PAGE`, or `.mem/.vmem/.dmp` + size ≥ 5 MB) before Volatility is invoked. Registry hives require a `regf` magic header. PCAPs are checked before tshark runs. The agent *cannot* escalate from a forensic tool to a raw command — the surface doesn't include one. The reference baseline for this hackathon is the SIFT Workstation, and the question we set out to answer was: *what does it look like to make the SIFT toolchain agent-callable in a way that a security-cleared reviewer can approve?*
 
 The design is also explicitly anti-fragile. When `GROQ_API_KEY` is absent, the agent runs in **deterministic mode** — tool selection comes from a 58-entry registry with priority ordering and fallback chains, and reports come from a built-in narrative generator. We built and tested the entire 122-test suite without a single LLM call. The system has shipped to date with no AI involvement on the verification path, and we believe that's a feature, not a limitation, for forensic work where the difference between "the AI inferred this" and "we confirmed this" is the difference between a clean finding and a defamation lawsuit.
 
@@ -40,7 +40,7 @@ The design is also explicitly anti-fragile. When `GROQ_API_KEY` is absent, the a
                     ├──────────────────────────────────────────┤
    user / LLM       │  ┌──────────────┐    ┌────────────────┐  │
        │            │  │  CLI (rich)  │    │  MCP Server    │  │   JSON-RPC
-       │            │  │  investigate │    │  22 tools      │◀─┼─── stdio
+       │            │  │  investigate │    │  23 tools      │◀─┼─── stdio
        └────────────┼─▶│  tool …      │    │  typed schemas │  │
                     │  │  serve       │    │  audit trail   │  │
                     │  └─────┬────────┘    └────────┬───────┘  │
@@ -63,9 +63,9 @@ The design is also explicitly anti-fragile. When `GROQ_API_KEY` is absent, the a
                     └──────────────────────────────────────────┘
 ```
 
-### 2.2 The MCP server — 22 typed forensic functions
+### 2.2 The MCP server — 23 typed forensic functions
 
-Every tool the agent can call is registered through `mcp.server.Server.list_tools()` with a full JSON Schema for arguments and a `TextContent` return type. There is no `Bash` tool, no `subprocess` escape hatch, no `python_exec`. The LLM is structurally constrained to use the 22 forensic primitives below.
+Every tool the agent can call is registered through `mcp.server.Server.list_tools()` with a full JSON Schema for arguments and a `TextContent` return type. There is no `Bash` tool, no `subprocess` escape hatch, no `python_exec`. The LLM is structurally constrained to use the 23 forensic primitives below.
 
 | # | Tool | Category | Underlying CLI | Notes |
 |---|------|----------|----------------|-------|
@@ -123,7 +123,7 @@ For each tool, we ship apt and brew install hints (`_apt_package`, `_brew_packag
 
 The 19 resolved tools are: `fls`, `icat`, `mmls`, `fsstat`, `istat`, `foremost`, `yara`, `tshark`, `md5sum`, `sha1sum`, `sha256sum`, `sha512sum`, `strings`, `debugfs`, `vol.py`, `bulk_extractor`, `binwalk`, `reglookup`, `hashdeep`. That's 19 × 3 = 57 platform-specific paths maintained, with zero hardcoded `/usr/bin/` paths in the runtime code paths.
 
-### 2.5 The 22-tool surface and the test suite
+### 2.5 The 23-tool surface and the test suite
 
 We have 122 passing pytest tests, organized as:
 
@@ -170,7 +170,7 @@ The most important security property of the system is that `_validate_evidence_p
 
 ## 4. What we learned
 
-**a) The system prompt is the wrong layer for security guarantees.** Every prompt-only safety mechanism is a probabilistic claim. The structural approach — exposing only 22 typed tools, validating paths in code, confining outputs to a directory tree, validating evidence by magic bytes — is a *deterministic* claim. We will be defending this codebase in a security review, and we are comfortable saying "the agent cannot run `rm -rf`" because there is no `run_command` tool. The same answer doesn't work for prompt-engineering projects.
+**a) The system prompt is the wrong layer for security guarantees.** Every prompt-only safety mechanism is a probabilistic claim. The structural approach — exposing only 23 typed tools, validating paths in code, confining outputs to a directory tree, validating evidence by magic bytes — is a *deterministic* claim. We will be defending this codebase in a security review, and we are comfortable saying "the agent cannot run `rm -rf`" because there is no `run_command` tool. The same answer doesn't work for prompt-engineering projects.
 
 **b) Graceful degradation is the *only* reliable mode for forensic tools.** The temptation in an AI-powered DFIR tool is to assume the AI is always available. We assumed it isn't. The system runs the full 122-test suite without a single LLM call, and the deterministic mode produces findings of equal quality to the AI mode on all our test images. The AI mode is an *enhancement* (better tool selection, structured reports), not a dependency. This is the right shape for a security tool — you don't want your incident-response platform to fail because the rate limit kicked in.
 
@@ -218,7 +218,7 @@ We will not add a `Bash` tool to the MCP server, even if it would make the LLM m
 
 ### Languages & frameworks
 - **Python 3.10–3.13** (CI matrix)
-- **Pydantic 2** — typed I/O for all 22 tools
+- **Pydantic 2** — typed I/O for all 23 tools
 - **asyncio + run_in_executor** — non-blocking subprocess execution
 - **Rich** — terminal UI for the CLI
 - **tomllib** — `config/tools.toml` parsing
@@ -263,7 +263,7 @@ We will not add a `Bash` tool to the MCP server, even if it would make the LLM m
 
 | Capability | SIFT Workstation (manual) | SIFT + raw LLM (Approach #1) | **FindEvil Agent (Approach #2, ours)** |
 |---|---|---|---|
-| Forensic tool surface | 19+ CLIs, no agent surface | 19+ CLIs exposed as `Bash` | **22 typed MCP functions, no `Bash`** |
+| Forensic tool surface | 19+ CLIs, no agent surface | 19+ CLIs exposed as `Bash` | **23 typed MCP functions, no `Bash`** |
 | Path validation | Operator's responsibility | Trust the LLM to be careful | **Code-enforced `Path.relative_to(EVIDENCE_ROOT)`** |
 | Output confinement | Operator's responsibility | Trust the LLM | **Code-enforced `RESULTS_ROOT` allow-list** |
 | Memory dump validation | Operator inspects magic bytes | LLM may run `vol` on anything | **Code-enforced `\\x7fELF` + `ET_CORE` / `PAGE` check** |
@@ -303,7 +303,7 @@ findevil check
 #   ✓ yara: 4.5.2
 #   ✓ tshark: 4.4.1
 #   ✓ vol.py: 2.26.0
-#   ✓ 22 MCP tools registered
+#   ✓ 23 MCP tools registered
 
 # 4. Generate a synthetic test image with real IOCs
 findevil create-test-image test.dd --size 50
@@ -360,7 +360,7 @@ docker run --rm -v /evidence:/evidence -v /results:/results \
 |---|---|
 | **1. Autonomous Execution Quality** | 8-phase workflow, ≤ 30 iterations, 5-failure abort, 1-hour wall cap, two-level self-correction (in-category chain + type escalation) |
 | **2. IR Accuracy** | Real C2 IOCs (Emotet/Trickbot/Conti/Dridex/IcedID), 5 YARA rules with severity metadata, Volatility 3 with string-IOC fallback, Plaso timeline, evidence type detection filters wrong-tool calls at the LLM layer |
-| **3. Breadth and Depth of Analysis** | 22 tools across 8 categories: disk, memory, registry, network, carving, hashing, YARA, timeline. Both *breadth* (multiple evidence types) and *depth* (Volatility plugin selection, Plaso timeline, bulk_extractor features) |
+| **3. Breadth and Depth of Analysis** | 23 tools across 8 categories: disk, memory, registry, network, carving, hashing, YARA, timeline. Both *breadth* (multiple evidence types) and *depth* (Volatility plugin selection, Plaso timeline, bulk_extractor features) |
 | **4. Constraint Implementation (architectural vs prompt)** | All 7 critical constraints enforced in Python: path validation, output confinement, evidence type detection, magic-byte validation, registry/PCAP format checks, audit trail persistence, token budget cap. **Zero** constraints in the system prompt. |
 | **5. Audit Trail Quality** | JSONL audit log (10-entry buffer flush, `atexit` cleanup, survives process death), security event log (separate file, capped at 100K entries with 50K trim), per-finding confidence scoring, MCP `get_audit_logs` and `get_security_logs` queryable from the LLM |
 | **6. Usability and Documentation** | 5 markdown docs (README, CHANGELOG, ARCHITECTURE, GAP_ANALYSIS, CONTRIBUTING, SECURITY), 122 tests, 9-job CI matrix, multi-stage Docker, FAQ section, troubleshooting matrix, "Try it out" command list, comparison table to baseline |

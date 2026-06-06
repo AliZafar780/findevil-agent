@@ -397,3 +397,256 @@ class TestErrorMessageQuality:
         r = await _call(mcp_client, "scan_yara", {"target": test_img, "rules": "bad"})
         err_msg = r.get("error", "")
         assert len(err_msg) > 20, f"Error msg too short: '{err_msg}'"
+
+
+@pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
+class TestGetSecurityLogs:
+    """get_security_logs tool must be retrievable and well-formed."""
+
+    async def test_security_logs_retrievable(self, mcp_client):
+        r = await _call(mcp_client, "get_security_logs", {"limit": 100})
+        assert r.get("success"), "Security logs should be retrievable"
+        # Server returns 'events' key (not 'entries')
+        assert "events" in r, "Response must contain 'events' field"
+
+    async def test_security_logs_entries_well_formed(self, mcp_client):
+        r = await _call(mcp_client, "get_security_logs", {"limit": 100})
+        events = r.get("events", [])
+        if events:
+            entry = events[0]
+            assert "type" in entry, "Security entry must have 'type' field"
+            assert "event" in entry, "Security entry must have 'event' field"
+            assert "timestamp" in entry, "Security entry must have 'timestamp' field"
+
+    async def test_security_logs_no_limit_defaults(self, mcp_client):
+        r = await _call(mcp_client, "get_security_logs", {})
+        assert r.get("success"), "Security logs should work without limit arg"
+        assert "events" in r, "Response must contain 'events' field"
+
+
+class TestGetToolConfig:
+    """get_tool_config tool must handle known/unknown tools."""
+
+    async def test_get_tool_config_known(self, mcp_client):
+        r = await _call(mcp_client, "get_tool_config", {"tool_name": "fls"})
+        assert r.get("success"), "Known tool config should be retrievable"
+        cfg = r.get("config", {})
+        assert cfg.get("command"), "Config should include 'command' field"
+
+    async def test_get_tool_config_unknown(self, mcp_client):
+        r = await _call(mcp_client, "get_tool_config", {"tool_name": "nonexistent_tool_xyz"})
+        # Unknown tools should still return a response (might be empty config)
+        assert r.get("success") or r.get("error"), "Unknown tool should return informative response"
+
+    async def test_get_tool_config_empty_name(self, mcp_client):
+        r = await _call(mcp_client, "get_tool_config", {"tool_name": ""})
+        # Empty name should be handled gracefully
+        assert r.get("success") or r.get("error"), "Empty tool name should be handled"
+
+    async def test_get_tool_config_missing_param(self, mcp_client):
+        r = await _call(mcp_client, "get_tool_config", {})
+        assert not r.get("success"), "Missing required param should fail"
+
+
+@pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
+class TestExtractFeaturesEdgeCases:
+    """extract_features tool must handle edge cases."""
+
+    async def test_extract_features_missing_image(self, mcp_client):
+        r = await _call(mcp_client, "extract_features", {"image_path": "/nonexistent/img.raw"})
+        assert not r.get("success"), "Missing image should fail"
+
+    async def test_extract_features_empty_path(self, mcp_client):
+        r = await _call(mcp_client, "extract_features", {"image_path": ""})
+        assert not r.get("success"), "Empty path should fail"
+
+    async def test_extract_features_missing_param(self, mcp_client):
+        r = await _call(mcp_client, "extract_features", {})
+        assert not r.get("success"), "Missing required param should fail"
+
+
+@pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
+class TestBenchmarkAccuracyEdgeCases:
+    """benchmark_accuracy tool must handle edge cases."""
+
+    async def test_benchmark_missing_evidence(self, mcp_client):
+        r = await _call(
+            mcp_client,
+            "benchmark_accuracy",
+            {
+                "evidence_path": "/nonexistent/img.raw",
+                "ground_truth": "[]",
+            },
+        )
+        assert not r.get("success"), "Missing evidence should fail"
+
+    async def test_benchmark_invalid_ground_truth(self, mcp_client, test_img):
+        r = await _call(
+            mcp_client,
+            "benchmark_accuracy",
+            {
+                "evidence_path": test_img,
+                "ground_truth": "not valid json {[}",
+            },
+        )
+        assert not r.get("success"), "Invalid ground truth JSON should fail"
+
+    async def test_benchmark_empty_ground_truth(self, mcp_client, test_img):
+        r = await _call(
+            mcp_client,
+            "benchmark_accuracy",
+            {
+                "evidence_path": test_img,
+                "ground_truth": "[]",
+                "agent_findings": "[]",
+            },
+        )
+        # Empty ground truth is valid (zero targets to verify)
+        assert r.get("success"), "Empty ground truth should be handled gracefully"
+        bm = r.get("benchmark", {})
+        metrics = bm.get("metrics", {})
+        assert "precision" in metrics, "Should return precision metric"
+
+    async def test_benchmark_missing_required_params(self, mcp_client, test_img):
+        r = await _call(
+            mcp_client,
+            "benchmark_accuracy",
+            {"evidence_path": test_img},
+        )
+        assert not r.get("success"), "Missing required 'ground_truth' param should fail"
+
+    async def test_benchmark_empty_evidence_path(self, mcp_client):
+        r = await _call(
+            mcp_client,
+            "benchmark_accuracy",
+            {
+                "evidence_path": "",
+                "ground_truth": "[]",
+            },
+        )
+        assert not r.get("success"), "Empty evidence path should fail"
+
+
+class TestMemDumpCmdlineEdgeCases:
+    """mem_dump_cmdline tool must handle non-memory files and missing paths."""
+
+    async def test_mem_dump_cmdline_missing_path(self, mcp_client):
+        r = await _call(mcp_client, "mem_dump_cmdline", {"memory_path": ""})
+        assert not r.get("success"), "Empty path should fail"
+
+    async def test_mem_dump_cmdline_nonexistent(self, mcp_client):
+        r = await _call(mcp_client, "mem_dump_cmdline", {"memory_path": "/nonexistent/mem.dmp"})
+        assert not r.get("success"), "Nonexistent path should fail"
+
+    @pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
+    async def test_mem_dump_cmdline_on_disk(self, mcp_client, test_img):
+        r = await _call(mcp_client, "mem_dump_cmdline", {"memory_path": test_img})
+        # Disk image is not a memory capture, so should fail or fallback
+        if r.get("success"):
+            data = r.get("data", [])
+            if data:
+                assert any(
+                    "fallback" in (d.get("plugin") or "") or "string-based" in (d.get("note") or "")
+                    for d in data
+                ), "Expected fallback IOC scan, not full memory analysis"
+
+
+class TestMemScanNetworkEdgeCases:
+    """mem_scan_network tool must handle non-memory files and missing paths."""
+
+    async def test_mem_scan_network_missing_path(self, mcp_client):
+        r = await _call(mcp_client, "mem_scan_network", {"memory_path": ""})
+        assert not r.get("success"), "Empty path should fail"
+
+    async def test_mem_scan_network_nonexistent(self, mcp_client):
+        r = await _call(mcp_client, "mem_scan_network", {"memory_path": "/nonexistent/mem.dmp"})
+        assert not r.get("success"), "Nonexistent path should fail"
+
+    @pytest.mark.skipif(not HAS_EVIDENCE, reason="Test evidence file required")
+    async def test_mem_scan_network_on_disk(self, mcp_client, test_img):
+        r = await _call(mcp_client, "mem_scan_network", {"memory_path": test_img})
+        # Disk image is not a memory capture, so should fail or fallback
+        if r.get("success"):
+            data = r.get("data", [])
+            if data:
+                assert any(
+                    "fallback" in (d.get("plugin") or "") or "string-based" in (d.get("note") or "")
+                    for d in data
+                ), "Expected fallback IOC scan, not full memory analysis"
+
+
+class TestTimelineBuildEdgeCases:
+    """timeline_build tool must handle missing sources gracefully."""
+
+    async def test_timeline_build_missing_source(self, mcp_client):
+        r = await _call(mcp_client, "timeline_build", {"source_path": ""})
+        assert not r.get("success"), "Empty source path should fail"
+
+    async def test_timeline_build_nonexistent(self, mcp_client):
+        r = await _call(mcp_client, "timeline_build", {"source_path": "/nonexistent/path"})
+        assert not r.get("success"), "Nonexistent source should fail"
+
+    async def test_timeline_build_missing_param(self, mcp_client):
+        r = await _call(mcp_client, "timeline_build", {})
+        assert not r.get("success"), "Missing required param should fail"
+
+
+class TestTimelineFilterEdgeCases:
+    """timeline_filter tool must handle missing storage files gracefully."""
+
+    async def test_timeline_filter_missing_storage(self, mcp_client):
+        r = await _call(
+            mcp_client,
+            "timeline_filter",
+            {"storage_path": "/nonexistent/timeline.plaso"},
+        )
+        assert not r.get("success"), "Nonexistent storage should fail"
+
+    async def test_timeline_filter_empty_storage(self, mcp_client):
+        r = await _call(mcp_client, "timeline_filter", {"storage_path": ""})
+        assert not r.get("success"), "Empty storage path should fail"
+
+    async def test_timeline_filter_missing_param(self, mcp_client):
+        r = await _call(mcp_client, "timeline_filter", {})
+        assert not r.get("success"), "Missing required param should fail"
+
+
+class TestCorrelateEvidenceEdgeCases:
+    """correlate_evidence tool must validate both paths."""
+
+    async def test_correlate_missing_params(self, mcp_client):
+        r = await _call(mcp_client, "correlate_evidence", {})
+        assert not r.get("success"), "Missing params should fail"
+
+    async def test_correlate_empty_disk_path(self, mcp_client):
+        r = await _call(
+            mcp_client,
+            "correlate_evidence",
+            {
+                "disk_path": "",
+                "memory_path": "/evidence/cases/test.raw",
+            },
+        )
+        assert not r.get("success"), "Empty disk path should fail"
+
+    async def test_correlate_empty_memory_path(self, mcp_client):
+        r = await _call(
+            mcp_client,
+            "correlate_evidence",
+            {
+                "disk_path": "/evidence/cases/test.raw",
+                "memory_path": "",
+            },
+        )
+        assert not r.get("success"), "Empty memory path should fail"
+
+    async def test_correlate_nonexistent_paths(self, mcp_client):
+        r = await _call(
+            mcp_client,
+            "correlate_evidence",
+            {
+                "disk_path": "/nonexistent/disk.raw",
+                "memory_path": "/nonexistent/mem.dmp",
+            },
+        )
+        assert not r.get("success"), "Nonexistent paths should fail"

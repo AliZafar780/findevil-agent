@@ -8,7 +8,7 @@ last_updated: 2026-06-06
 
 # FindEvil Agent — Technical Architecture
 
-> **Autonomous DFIR Analysis Agent** — 22 typed forensic tools, Groq AI orchestration,
+> **Autonomous DFIR Analysis Agent** — 23 typed forensic tools, Groq AI orchestration,
 > evidence-root enforcement, full audit trail, zero-trust design.
 
 ---
@@ -25,7 +25,7 @@ Analyst ──▶ Rich CLI ──▶ ReAct Agent ──▶ MCP Server ──▶ 
 
 **What makes it different**: The AI is *physically constrained*. It cannot
 type arbitrary shell commands. Every system call is a typed function with
-validated arguments. The LLM only ever **suggests** which of 22 pre-vetted
+validated arguments. The LLM only ever **suggests** which of 23 pre-vetted
 tools to call next; the MCP server enforces what actually runs.
 
 ---
@@ -52,7 +52,7 @@ flowchart TB
     %% ── MCP trust boundary ──────────────────────────────────────
     subgraph MCP_Server["MCP SERVER (trust boundary — stdio)"]
         direction TB
-        SERVER[FastMCP Server<br/>22 typed tools<br/>src/server.py<br/>~2400 LoC]:::mcp
+        SERVER[FastMCP Server<br/>23 typed tools<br/>src/server.py<br/>~2400 LoC]:::mcp
         VAL[/"_validate_evidence_path()<br/>_validate_output_dir()<br/>ARCHITECTURAL GUARDRAILS"/]:::guard
         LOCK["asyncio.Lock<br/>per-call serialization"]:::lock
         AUDIT[(Audit Log<br/>session_*.jsonl)]:::audit
@@ -162,7 +162,7 @@ Analyst ──▶ Rich CLI  ──▶  DFIRWorkflow  ──tools/─▶  │  re
 
 | # | Component | File | LoC | Role |
 |---|-----------|------|-----|------|
-| 1 | **MCP Server** | `src/server.py` | ~2,400 | FastMCP host. Registers 22 tools, enforces path validation, owns audit/security logs, serializes calls with `asyncio.Lock`. |
+| 1 | **MCP Server** | `src/server.py` | ~2,400 | FastMCP host. Registers 23 tools, enforces path validation, owns audit/security logs, serializes calls with `asyncio.Lock`. |
 | 2 | **DFIR Workflow** | `src/agent/loop.py` | ~950 | ReAct engine. Owns `AgentState`, runs 8 phases, performs self-correction via fallback chains, scores finding confidence. |
 | 3 | **Groq Client** | `src/agent/groq_client.py` | ~470 | Optional LLM client. `decide_next_tools()` and `generate_report()`. Falls back to deterministic when no key set. |
 | 4 | **Tool Selector** | `src/agent/tool_selector.py` | ~125 | 58-entry registry of fallback chains per phase (triage, fs, memory, registry, network, timeline, artifacts). |
@@ -195,7 +195,7 @@ FindEvil separates **architectural** (cannot be bypassed) from **prompt-based** 
 |-------|-------|----------------|
 | **Evidence root** | `server.py::_validate_evidence_path()` | Any path that doesn't resolve under `EVIDENCE_ROOT` (default `/evidence`) — blocks `/etc/passwd`, `../`, symlink escapes, null bytes, paths > 4096 chars. |
 | **Output confinement** | `server.py::_validate_output_dir()` | Carve/extract destinations must resolve under `RESULTS_ROOT` (default `/results`) — blocks writes to `/tmp` or system dirs. |
-| **Typed MCP functions** | `server.py::list_tools()` | 22 named functions with JSON Schemas — the LLM **physically cannot** call `subprocess.run`, `os.system`, or any Python builtin. Only the 22 typed wrappers exist. |
+| **Typed MCP functions** | `server.py::list_tools()` | 23 named functions with JSON Schemas — the LLM **physically cannot** call `subprocess.run`, `os.system`, or any Python builtin. Only the 23 typed wrappers exist. |
 | **Concurrency lock** | `server.py::_call_lock` | `asyncio.Lock` serializes all tool calls on stdio — prevents interleaved responses, race conditions on shared resources. |
 | **Arg sanitization** | `server.py::call_tool()` | Rejects null bytes, strings > 100K, integers outside `[-10¹⁵, 10¹⁵]` before dispatch. |
 | **Memory detection** | `tools/memory.py::_is_memory_capture()` | Magic-byte check (ELF, `PAGE`, `VMem`) + extension whitelist + size floor (5 MB) — prevents misidentification. |
@@ -409,7 +409,7 @@ flowchart TB
 
 ### 7.1 What the AI *physically cannot* do
 
-The AI is constrained by a *whitelist* of 22 typed functions. It has **no
+The AI is constrained by a *whitelist* of 23 typed functions. It has **no
 access to**:
 
 | Forbidden capability | Why it's safe |

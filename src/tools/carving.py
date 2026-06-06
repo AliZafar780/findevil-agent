@@ -25,6 +25,16 @@ def carve_files(
     try:
         if output_dir is None:
             output_dir = f"/results/carved/{Path(image_path).stem}"
+        # Security: validate output directory is under /results
+        resolved_out = Path(output_dir).resolve()
+        results_root = Path("/results").resolve()
+        try:
+            resolved_out.relative_to(results_root)
+        except ValueError:
+            return CarvingResult(
+                success=False,
+                error=f"Output directory must be under /results: {output_dir}",
+            )
         Path(output_dir).parent.mkdir(parents=True, exist_ok=True)
 
         from src.tools.tool_resolver import find_tool
@@ -75,7 +85,23 @@ def carve_files(
 def extract_features(image_path: str, scanners: str = "all") -> CarvingResult:
     """Extract emails, URLs, credit cards, and other features using bulk_extractor."""
     try:
+        # Security: evidence path must exist and be readable
+        if not image_path or not Path(image_path).exists():
+            return CarvingResult(
+                success=False,
+                error=f"Evidence path does not exist: {image_path}",
+            )
         output_dir = f"/results/carved/{Path(image_path).stem}_features"
+        # Security: validate output directory is under /results
+        resolved_out = Path(output_dir).resolve()
+        results_root = Path("/results").resolve()
+        try:
+            resolved_out.relative_to(results_root)
+        except ValueError:
+            return CarvingResult(
+                success=False,
+                error=f"Output directory must be under /results: {output_dir}",
+            )
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
         from src.tools.tool_resolver import find_tool
@@ -127,6 +153,12 @@ def extract_features(image_path: str, scanners: str = "all") -> CarvingResult:
 def analyze_binary(image_path: str) -> CarvingResult:
     """Analyze binary file structure using binwalk."""
     try:
+        # Security: evidence path must exist and be readable
+        if not image_path or not Path(image_path).exists():
+            return CarvingResult(
+                success=False,
+                error=f"Evidence path does not exist: {image_path}",
+            )
         from src.tools.tool_resolver import find_tool
 
         binwalk_bin = find_tool("binwalk") or "/usr/bin/binwalk"

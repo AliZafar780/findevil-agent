@@ -131,6 +131,10 @@ def find_tool(name: str) -> Optional[str]:
     Returns:
         Full path to tool, or None if not found.
     """
+    # Guard: reject non-string or empty input
+    if not isinstance(name, str) or not name:
+        return None
+
     # 1. PATH lookup
     path = shutil.which(name)
     if path:

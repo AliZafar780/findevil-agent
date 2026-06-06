@@ -300,13 +300,13 @@ This creates an **oracle for file existence** outside the evidence root — an a
 **File:** `src/agent/loop.py:180-200`
 **Severity:** 🟠 High
 
-The agent loop doesn't validate that evidence paths exist before calling tool handlers. Each of the 21 handlers validates independently, wasting time:
+The agent loop doesn't validate that evidence paths exist before calling tool handlers. Each of the 23 handlers validates independently, wasting time:
 
 ```
 Phase starts → tool1 → handler validates path (exists!) → tool2 → handler validates path → ...
 ```
 
-If the evidence doesn't exist, this requires **21 round-trips through the LLM** to fail.
+If the evidence doesn't exist, this requires **23 round-trips through the LLM** to fail.
 
 **Fix:** Add `_validate_evidence()` at the start of `run()` that checks path exists, size > 0, file is readable.
 
@@ -668,7 +668,7 @@ These are generic English words present in countless legitimate software package
 
 | Area | Test Coverage | Gaps |
 |------|---------------|------|
-| Server tool handlers | 11 tests (test_server.py) | 10 of 21 handlers untested |
+| Server tool handlers | 11 tests (test_server.py) | 12 of 23 handlers untested |
 | Agent workflow | 2 tests (test_workflow.py) | No failure/recovery tests |
 | Edge cases | 50+ scenarios (test_edge_cases.py) | Manual runner, no pytest |
 | CLI | ❌ No tests | test_cli.py doesn't exist |
