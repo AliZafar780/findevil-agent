@@ -907,6 +907,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 "benchmark_accuracy": _handle_benchmark,
                 "get_audit_logs": _handle_audit_logs,
                 "get_security_logs": _handle_security_logs,
+                "correlate_evidence": _handle_correlate,
             }
 
             handler = handler_map.get(name)
@@ -2499,6 +2500,97 @@ async def _handle_security_logs(args: dict[str, Any]) -> list[TextContent]:
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  CROSS-SOURCE CORRELATION
+# ═══════════════════════════════════════════════════════════════════
+
+
+async def _handle_correlate(args: dict[str, Any]) -> list[TextContent]:
+    """Cross-reference findings between disk image and memory capture.
+
+    Delegates to src.tools.correlation.CorrelationEngine which runs
+    four parallel analyses: process-file, timeline, network-disk, and
+    hash-identity. All four are wrapped with independent timeouts so a
+    hang in one analysis cannot block the others.
+    """
+    disk_path = args.get("disk_path", "")
+    memory_path = args.get("memory_path", "")
+    output_dir = args.get("output_dir", "/results/correlations")
+    timeout = float(args.get("analysis_timeout", 60.0))
+
+    # Validate paths
+    err = _validate_evidence_path(disk_path)
+    if err:
+        return [
+            TextContent(type="text", text=json.dumps({"success": False, "error": f"disk: {err}"}))
+        ]
+    err = _validate_evidence_path(memory_path)
+    if err:
+        return [
+            TextContent(type="text", text=json.dumps({"success": False, "error": f"memory: {err}"}))
+        ]
+
+    from src.tools.correlation import CorrelationEngine
+
+    # Lock-free internal dispatch — calls handlers directly so that
+    # correlation can invoke fs_* / mem_* tools without deadlocking on
+    # _call_lock (which is already held when this handler runs).
+    _HANDLER_MAP = {
+        "fs_partition_scan": _handle_partition_scan,
+        "fs_list_files": _handle_list_files,
+        "fs_extract_file": _handle_extract_file,
+        "fs_file_metadata": _handle_file_metadata,
+        "fs_filesystem_info": _handle_fs_info,
+        "carve_files": _handle_carve,
+        "scan_yara": _handle_yara,
+        "verify_hash": _handle_hash,
+        "list_evidence": _handle_list_evidence,
+        "mem_analyze": _handle_mem_analyze,
+        "mem_list_processes": _handle_mem_list_processes,
+        "mem_scan_network": _handle_mem_scan_network,
+        "mem_dump_cmdline": _handle_mem_dump_cmdline,
+        "reg_analyze_hive": _handle_reg_analyze,
+        "pcap_analyze": _handle_pcap_analyze,
+        "pcap_list_protocols": _handle_pcap_protocols,
+        "timeline_build": _handle_timeline_build,
+        "timeline_filter": _handle_timeline_filter,
+        "extract_features": _handle_extract_features,
+        "get_audit_logs": _handle_audit_logs,
+        "get_security_logs": _handle_security_logs,
+        "benchmark_accuracy": _handle_benchmark,
+    }
+
+    async def _tool_caller(name: str, arguments: dict) -> dict:
+        try:
+            handler = _HANDLER_MAP.get(name)
+            if handler is None:
+                return {"success": False, "error": f"Unknown internal tool: {name}"}
+            result = await handler(arguments)
+            if isinstance(result, list) and len(result) == 1:
+                text = result[0].text
+                return json.loads(text)
+            return {"success": False, "error": f"Unexpected shape: {type(result).__name__}"}
+        except Exception as exc:
+            return {"success": False, "error": f"{name} raised: {exc}"}
+
+    engine = CorrelationEngine(
+        disk_path=disk_path,
+        memory_path=memory_path,
+        tool_caller=_tool_caller,
+        output_dir=output_dir,
+        analysis_timeout=timeout,
+    )
+
+    try:
+        report = await engine.run()
+        return [TextContent(type="text", text=json.dumps(report.model_dump(), indent=2))]
+    except Exception as exc:
+        logger.exception("Correlation engine failed")
+        return [
+            TextContent(type="text", text=json.dumps({"success": False, "error": str(exc)[:500]}))
+        ]
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  SERVER ENTRYPOINT
 # ═══════════════════════════════════════════════════════════════════
 
@@ -2508,7 +2600,7 @@ async def main() -> None:
     logger.info(f"Starting {SERVER_NAME} v{SERVER_VERSION}")
     logger.info(f"Evidence root: {EVIDENCE_ROOT}")
     logger.info(f"Results root: {RESULTS_ROOT}")
-    logger.info("21 forensic tools registered")
+    logger.info("23 forensic tools registered")
 
     # Ensure directories exist
     try:

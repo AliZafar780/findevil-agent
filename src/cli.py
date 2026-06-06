@@ -147,7 +147,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="findevil",
         description="FindEvil — Autonomous DFIR Analysis Agent",
-        epilog="Powered by Groq AI | 22 MCP Tools | Cross-Platform",
+        epilog="Powered by Groq AI | 23 MCP Tools | Cross-Platform",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"FindEvil Agent v{_get_version()}")
@@ -205,7 +205,7 @@ def main() -> None:
     subparsers.add_parser(
         "tools",
         help="List all available forensic tools",
-        description="Display all 21 registered forensic tools with descriptions",
+        description="Display all 23 registered forensic tools with descriptions",
     )
 
     # ── tool ──
@@ -253,6 +253,23 @@ def main() -> None:
         description="Check environment for required tools, Python modules, and evidence directories",
     )
 
+    # ── correlate ──
+    corr = subparsers.add_parser(
+        "correlate",
+        help="Cross-reference disk image and memory capture",
+        description="Correlate findings between disk and memory sources to detect discrepancies",
+    )
+    corr.add_argument("disk_path", help="Path to disk image (ext2/3/4, raw, dd)")
+    corr.add_argument("memory_path", help="Path to memory capture (dump, mem, vmem)")
+    corr.add_argument(
+        "--output-dir",
+        default="/results/correlations",
+        help="Output directory for correlation report",
+    )
+    corr.add_argument(
+        "--timeout", type=float, default=60.0, help="Max seconds per analysis (default: 60)"
+    )
+
     args = parser.parse_args()
 
     if args.debug:
@@ -280,6 +297,8 @@ def main() -> None:
         _cmd_ascii_arch()
     elif args.command == "check":
         asyncio.run(_cmd_check())
+    elif args.command == "correlate":
+        asyncio.run(_cmd_correlate(args))
     else:
         _print_logo()
         parser.print_help()
@@ -305,7 +324,7 @@ def _print_logo() -> None:
         _print(
             Panel.fit(
                 "[bold cyan]Autonomous DFIR Analysis Agent[/bold cyan]\n"
-                "[dim]AI-powered digital forensics  ·  22 MCP Tools  ·  Cross-Platform[/dim]",
+                "[dim]AI-powered digital forensics  ·  23 MCP Tools  ·  Cross-Platform[/dim]",
                 border_style="cyan",
                 padding=(0, 4),
             )
@@ -316,7 +335,7 @@ def _print_logo() -> None:
         print(f"{ANSI_DIM}{'─' * 60}{ANSI_RESET}")
         print(f"{ANSI_CYAN}  Autonomous DFIR Analysis Agent{ANSI_RESET}")
         print(
-            f"{ANSI_DIM}  AI-powered digital forensics  |  22 MCP Tools  |  Cross-Platform{ANSI_RESET}"
+            f"{ANSI_DIM}  AI-powered digital forensics  |  23 MCP Tools  |  Cross-Platform{ANSI_RESET}"
         )
         print(f"{ANSI_DIM}{'─' * 60}{ANSI_RESET}")
 
@@ -548,7 +567,7 @@ async def _cmd_serve() -> None:
 
 
 async def _cmd_tools() -> None:
-    """List all 21 forensic tools with rich formatting."""
+    """List all 23 forensic tools with rich formatting."""
     # Standalone tool list (no MCP server needed)
     tools = [
         ("🔍 fs_partition_scan", "Scan partition table using mmls — identify disk layout"),
@@ -572,10 +591,11 @@ async def _cmd_tools() -> None:
         ("🔎 extract_features", "Extract emails, URLs, credit cards via bulk_extractor"),
         ("🎯 benchmark_accuracy", "Run accuracy benchmark against known ground truth"),
         ("📊 get_audit_logs", "Retrieve session audit trail — all tool calls"),
+        ("🔄 correlate_evidence", "Cross-reference disk and memory — flag discrepancies"),
     ]
 
     if RICH_AVAILABLE:
-        table = Table(title="FindEvil — 21 Forensic Tools", box=box.ROUNDED)
+        table = Table(title="FindEvil — 23 Forensic Tools", box=box.ROUNDED)
         table.add_column("Tool", style="cyan", no_wrap=True, width=24)
         table.add_column("Description", style="white")
         for name, desc in tools:
@@ -584,7 +604,7 @@ async def _cmd_tools() -> None:
         _print("\n[dim]Run: [bold]findevil tool <toolname> --image <path>[/bold] for details[/dim]")
     else:
         print("\n  ╔══════════════════════════════════════════════╗")
-        print("  ║  FindEvil — 21 Forensic Tools                ║")
+        print("  ║  FindEvil — 23 Forensic Tools                ║")
         print("  ╚══════════════════════════════════════════════╝\n")
         for name, desc in tools:
             print(f"  {name}")
@@ -952,6 +972,68 @@ async def _cmd_check() -> None:
         else:
             print("⚠️ Some tools missing. Install SIFT Workstation for full functionality.")
         print(f"{'=' * 50}\n")
+
+
+async def _cmd_correlate(args: argparse.Namespace) -> None:
+    """Run cross-source correlation."""
+    disk = args.disk_path
+    memory = args.memory_path
+    output_dir = args.output_dir
+    timeout = args.timeout
+
+    if not Path(disk).exists():
+        _print(f"[bold red]❌ Disk image not found:[/bold red] {disk}")
+        sys.exit(1)
+    if not Path(memory).exists():
+        _print(f"[bold red]❌ Memory capture not found:[/bold red] {memory}")
+        sys.exit(1)
+
+    _print("\n[bold cyan]═══ Cross-Source Correlation ───[/bold cyan]")
+    _print(f"  Disk:   {disk}")
+    _print(f"  Memory: {memory}")
+    _print(f"  Output: {output_dir}")
+    _print()
+
+    from src.tools.correlation import CorrelationEngine
+
+    engine = CorrelationEngine(
+        disk_path=disk,
+        memory_path=memory,
+        tool_caller=None,  # No MCP server — CLI can't call tools directly
+        output_dir=output_dir,
+        analysis_timeout=timeout,
+    )
+
+    try:
+        report = await engine.run()
+        _print("[bold]Correlation complete:[/bold]")
+        _print(f"  Discrepancies: {report.total_discrepancies}")
+        _print(f"  IOCs:          {report.ioc_count}")
+        _print(f"  Duration:      {report.duration_ms}ms")
+
+        if report.discrepancies:
+            _print("\n[bold yellow]Findings:[/bold yellow]")
+            for d in report.discrepancies[:20]:
+                severity_color = {
+                    "LOW": "green",
+                    "MEDIUM": "yellow",
+                    "HIGH": "red",
+                    "CRITICAL": "red bold",
+                }.get(d.severity, "white")
+                _print(
+                    f"  [{severity_color}][{d.severity}][/{severity_color}] "
+                    f"{d.type}: {d.description[:120]}"
+                )
+            if len(report.discrepancies) > 20:
+                _print(f"  ... and {len(report.discrepancies) - 20} more")
+
+        if report.suggestion:
+            _print(f"\n[bold]Suggestion:[/bold] {report.suggestion}")
+
+        _print(f"\n[dim]Full report saved to {output_dir}[/dim]")
+    except Exception as exc:
+        _print(f"[bold red]❌ Correlation failed:[/bold red] {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

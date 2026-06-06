@@ -41,6 +41,7 @@ EVIDENCE_TO_TOOLS: dict[str, list[str]] = {
     ],
     "pcap": ["pcap_analyze", "pcap_list_protocols"],
     "registry": ["reg_analyze_hive"],
+    "correlation": ["correlate_evidence"],
     "any": [
         "list_evidence",
         "verify_hash",
@@ -53,6 +54,7 @@ EVIDENCE_TO_TOOLS: dict[str, list[str]] = {
         "timeline_build",
         "timeline_filter",
         "extract_features",
+        "correlate_evidence",
     ],
 }
 
