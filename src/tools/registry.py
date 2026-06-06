@@ -66,7 +66,10 @@ def query(hive_path: str, key: str = "/", recursive: bool = False) -> RegistryRe
     except ImportError:
         # Fallback to reglookup CLI
         try:
-            cmd = ["/usr/bin/reglookup", hive_path]
+            from src.tools.tool_resolver import find_tool
+
+            reglookup_bin = find_tool("reglookup") or "/usr/bin/reglookup"
+            cmd = [reglookup_bin, hive_path]
             if key and key != "/":
                 cmd.extend(["-k", key])
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)

@@ -27,7 +27,10 @@ def carve_files(
             output_dir = f"/results/carved/{Path(image_path).stem}"
         Path(output_dir).parent.mkdir(parents=True, exist_ok=True)
 
-        cmd = ["/usr/bin/foremost", "-o", output_dir, "-q"]
+        from src.tools.tool_resolver import find_tool
+
+        foremost_bin = find_tool("foremost") or "/usr/bin/foremost"
+        cmd = [foremost_bin, "-o", output_dir, "-q"]
         if file_types and file_types != "all":
             cmd.extend(["-t", file_types])
         cmd.append(image_path)
@@ -62,7 +65,7 @@ def carve_files(
     except subprocess.TimeoutExpired:
         return CarvingResult(success=False, error="foremost timed out after 600s")
     except FileNotFoundError:
-        return CarvingResult(success=False, error="foremost not found at /usr/bin/foremost")
+        return CarvingResult(success=False, error="foremost not found. Install: sudo apt-get install foremost")
     except Exception as e:
         return CarvingResult(success=False, error=str(e))
 
@@ -73,7 +76,10 @@ def extract_features(image_path: str, scanners: str = "all") -> CarvingResult:
         output_dir = f"/results/carved/{Path(image_path).stem}_features"
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        cmd = ["/usr/bin/bulk_extractor", "-o", output_dir, "-q"]
+        from src.tools.tool_resolver import find_tool
+
+        be_bin = find_tool("bulk_extractor") or "/usr/bin/bulk_extractor"
+        cmd = [be_bin, "-o", output_dir, "-q"]
         if scanners and scanners != "all":
             for s in scanners.split(","):
                 cmd.extend(["-S", s.strip()])
@@ -119,7 +125,10 @@ def extract_features(image_path: str, scanners: str = "all") -> CarvingResult:
 def analyze_binary(image_path: str) -> CarvingResult:
     """Analyze binary file structure using binwalk."""
     try:
-        cmd = ["/usr/bin/binwalk", "-B", "-M", image_path]
+        from src.tools.tool_resolver import find_tool
+
+        binwalk_bin = find_tool("binwalk") or "/usr/bin/binwalk"
+        cmd = [binwalk_bin, "-B", "-M", image_path]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
         entries = []

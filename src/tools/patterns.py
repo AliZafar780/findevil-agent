@@ -123,7 +123,10 @@ def scan_yara(
             tmp_rules = f.name
 
         try:
-            cmd = ["/usr/bin/yara", "-w", tmp_rules, target_path]
+            from src.tools.tool_resolver import find_tool
+
+            yara_bin = find_tool("yara") or "/usr/bin/yara"
+            cmd = [yara_bin, "-w", tmp_rules, target_path]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
             matches = []
@@ -144,7 +147,7 @@ def scan_yara(
     except subprocess.TimeoutExpired:
         return PatternResult(success=False, error="YARA scan timed out after 120s")
     except FileNotFoundError:
-        return PatternResult(success=False, error="yara not found at /usr/bin/yara")
+        return PatternResult(success=False, error="yara not found. Install: sudo apt-get install yara")
     except Exception as e:
         return PatternResult(success=False, error=str(e))
 

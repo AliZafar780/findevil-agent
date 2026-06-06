@@ -106,6 +106,11 @@ TOOL_LOCATIONS = {
         "darwin": ["/usr/local/bin/binwalk"],
         "win32": [],
     },
+    "reglookup": {
+        "linux": ["/usr/bin/reglookup", "/usr/local/bin/reglookup"],
+        "darwin": ["/usr/local/bin/reglookup", "/opt/homebrew/bin/reglookup"],
+        "win32": [],
+    },
     "hashdeep": {
         "linux": ["/usr/bin/hashdeep", "/usr/local/bin/hashdeep"],
         "darwin": ["/usr/local/bin/hashdeep"],

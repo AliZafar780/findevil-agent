@@ -53,12 +53,21 @@ class FileSystemResult(BaseModel):
     error: Optional[str] = None
 
 
-SLEUTHKIT_BIN = "/usr/bin"
+def _find_tsk_tool(tool: str) -> str:
+    from src.tools.tool_resolver import find_tool
+
+    path = find_tool(tool)
+    if not path:
+        raise FileNotFoundError(
+            f"TSK tool '{tool}' not found. Install: sudo apt-get install sleuthkit"
+        )
+    return path
 
 
 def _run_tsk(tool: str, args: List[str], timeout: int = 120) -> str:
     """Run a TSK tool and return stdout."""
-    cmd = [f"{SLEUTHKIT_BIN}/{tool}"] + args
+    tool_path = _find_tsk_tool(tool)
+    cmd = [tool_path] + args
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if result.returncode != 0:
@@ -67,7 +76,7 @@ def _run_tsk(tool: str, args: List[str], timeout: int = 120) -> str:
     except subprocess.TimeoutExpired:
         raise TimeoutError(f"{tool} timed out after {timeout}s")
     except FileNotFoundError:
-        raise RuntimeError(f"{tool} not found at {SLEUTHKIT_BIN}/{tool}")
+        raise RuntimeError(f"{tool} not found: '{tool}'")
 
 
 def list_files(
@@ -187,8 +196,13 @@ def get_inode_metadata(image_path: str, inode: int, offset: int = 0) -> FileSyst
 def extract_strings(image_path: str, min_length: int = 6) -> FileSystemResult:
     """Extract strings from a binary file."""
     try:
+        from src.tools.tool_resolver import find_tool
+
+        strings_bin = find_tool("strings")
+        if not strings_bin:
+            strings_bin = "/usr/bin/strings"
         result = subprocess.run(
-            ["/usr/bin/strings", "-n", str(min_length), image_path],
+            [strings_bin, "-n", str(min_length), image_path],
             capture_output=True,
             text=True,
             timeout=120,

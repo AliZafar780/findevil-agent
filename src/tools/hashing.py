@@ -20,15 +20,24 @@ class HashResult(BaseModel):
 def compute_hash(file_path: str, algorithm: str = "sha256") -> HashResult:
     """Compute cryptographic hash of a file."""
     try:
-        hash_cmd = {
-            "md5": "/usr/bin/md5sum",
-            "sha1": "/usr/bin/sha1sum",
-            "sha256": "/usr/bin/sha256sum",
-            "sha512": "/usr/bin/sha512sum",
-        }.get(algorithm)
+        from src.tools.tool_resolver import find_tool
 
-        if not hash_cmd:
+        HASH_TOOLS = {
+            "md5": "md5sum",
+            "sha1": "sha1sum",
+            "sha256": "sha256sum",
+            "sha512": "sha512sum",
+        }
+        tool_name = HASH_TOOLS.get(algorithm)
+        if not tool_name:
             return HashResult(success=False, error=f"Unsupported algorithm: {algorithm}")
+
+        hash_cmd = find_tool(tool_name)
+        if not hash_cmd:
+            return HashResult(
+                success=False,
+                error=f"Hash tool '{tool_name}' not found. Install coreutils: sudo apt-get install coreutils",
+            )
 
         result = subprocess.run([hash_cmd, file_path], capture_output=True, text=True, timeout=300)
 

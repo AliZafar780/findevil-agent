@@ -9,6 +9,10 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from src.tools.tool_resolver import find_tool
+
+TSHARK_PATH = find_tool("tshark") or "/usr/bin/tshark"  # fallback for backward compat
+
 
 class NetworkResult(BaseModel):
     success: bool = True
@@ -25,7 +29,7 @@ def analyze(
 ) -> NetworkResult:
     """Analyze a PCAP file with tshark."""
     try:
-        cmd = ["/usr/bin/tshark", "-r", pcap_path, "-T", "json"]
+        cmd = [TSHARK_PATH, "-r", pcap_path, "-T", "json"]
         if display_filter:
             cmd.extend(["-Y", display_filter])
         if max_packets > 0:
@@ -98,7 +102,7 @@ def analyze(
 def list_protocols(pcap_path: str) -> NetworkResult:
     """List all protocols in a PCAP file."""
     try:
-        cmd = ["/usr/bin/tshark", "-r", pcap_path, "-z", "io,phs", "-q"]
+        cmd = [TSHARK_PATH, "-r", pcap_path, "-z", "io,phs", "-q"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
         return NetworkResult(

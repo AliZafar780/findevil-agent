@@ -23,7 +23,7 @@
     AI-Powered Digital Forensics &amp; Incident Response
   </p>
   <p>
-    <a href="https://github.com/AliZafar780/findevil-agent"><img src="https://img.shields.io/badge/version-2.1.3-blue?style=flat-square&logo=github" alt="Version"></a>
+    <a href="https://github.com/AliZafar780/findevil-agent"><img src="https://img.shields.io/badge/version-2.1.4-blue?style=flat-square&logo=github" alt="Version"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
     <a href="https://github.com/AliZafar780/findevil-agent/actions"><img src="https://img.shields.io/badge/build-CI%20%7C%20Docker%20%7C%20Lint%20%7C%20Type%20Check-blue?style=flat-square" alt="CI"></a>
     <img src="https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue?style=flat-square&logo=python" alt="Python">
@@ -538,6 +538,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ---
 
 <div align="center">
-  <strong>FindEvil Agent v2.1.3</strong><br>
+  <strong>FindEvil Agent v2.1.4</strong><br>
   <sub>Autonomous DFIR Analysis · Memory · Disk · Registry · Network · Carving · YARA</sub>
 </div>

@@ -177,3 +177,37 @@ jobs:
       - name: Audit dependencies
         run: pip-audit
         continue-on-error: true
+
+  # ── SBOM Generation ──────────────────────────────────────────
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install cyclonedx-bom
+        run: pip install cyclonedx-bom
+
+      - name: Install project dependencies
+        run: |
+          pip install -e ".[dev,core]" 2>/dev/null || pip install pydantic fastmcp httpx rich
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          python -m cyclonedx_bom --output sbom.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+
+      - name: Summary
+        run: |
+          echo "## 📦 SBOM Generated" >> $GITHUB_STEP_SUMMARY
+          echo "Format: CycloneDX JSON" >> $GITHUB_STEP_SUMMARY

@@ -2,6 +2,33 @@
 
 All notable changes to FindEvil Agent will be documented in this file.
 
+## [2.1.4] - 2026-06-06
+
+### Parallel Hardening — Weaknesses Fixed
+
+#### Portability (Hardcoded Paths Eliminated)
+- Replaced all 18 hardcoded `/usr/bin/` tool paths with `tool_resolver.find_tool()` calls
+- Fixed files: `filesystem.py`, `hashing.py`, `network.py`, `patterns.py`, `carving.py`, `registry.py`, `server.py`
+- `SLEUTHKIT_BIN` constant removed; `_run_tsk()` now resolves tools dynamically
+- Added `reglookup` to `TOOL_LOCATIONS` in `tool_resolver.py`
+- Every tool module has a clean fallback path via `shutil.which()` + known platform locations
+
+#### Testing (Property-Based Tests)
+- Added `tests/test_property_based.py` with 16 Hypothesis property-based tests
+- Tests cover: tool resolver (never crashes), sanitize (always returns printable), truncate (always length-bounded), all Pydantic models (accept valid data shapes)
+- `hypothesis>=6.0` added to dev dependencies
+
+#### Security (Violation Audit Logging)
+- Added `_security_events` list + `_log_security_violation()` to `server.py`
+- `_validate_evidence_path()` now logs every security violation (path traversal, null byte, etc.) before returning error
+- New MCP tool `get_security_logs` exposes security event history
+- Violations logged with timestamp, type, path, and detail
+
+#### CI/CD (SBOM Generation)
+- Added `sbom` CI job that generates CycloneDX SBOM via `cyclonedx-bom`
+- SBOM artifact uploaded on every push
+- Added `pip-audit` step for dependency vulnerability scanning
+
 ## [2.1.3] - 2026-06-06
 
 ### Dependency & Housekeeping

@@ -170,6 +170,28 @@ async def _get_audit_logs() -> list[dict[str, Any]]:
         return list(_audit_entries)
 
 
+# ── Security Event Logging ─────────────────────────────────────────
+_security_events: list[dict[str, Any]] = []
+
+
+def _log_security_violation(event_type: str, path: str, detail: str = "") -> None:
+    """Log a security violation for audit trail."""
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "type": "security_violation",
+        "event": event_type,
+        "path": _trunc(path, 200),
+        "detail": _trunc(detail, 500),
+    }
+    _security_events.append(entry)
+    logger.warning(f"Security violation: {event_type} — {path}")
+
+
+async def _get_security_logs() -> list[dict[str, Any]]:
+    """Return all security violation entries for the current session."""
+    return list(_security_events)
+
+
 def _cleanup() -> None:
     """Graceful cleanup on exit."""
     _flush_audit_buffer()
@@ -307,39 +329,50 @@ def _find_tool(name: str) -> str:
 
 def _validate_evidence_path(path: str) -> Optional[str]:
     """Validate that a path is within the evidence root and exists.
-    Does NOT leak the requested path in error messages (privacy/security)."""
+    Does NOT leak the requested path in error messages (privacy/security).
+    Logs all violations to the security audit trail."""
     if not path or not path.strip():
+        _log_security_violation("empty_path", path or "", "Path argument was empty or whitespace-only")
         return "Path cannot be empty"
     # Reject null bytes and control characters
     if "\x00" in path or any(ord(c) < 32 for c in path):
+        _log_security_violation("invalid_chars", path, "Contains null byte or control characters")
         return "Path contains invalid characters"
     # Limit path length
     if len(path) > 4096:
+        _log_security_violation("path_too_long", path, f"Path length {len(path)} exceeds 4096 limit")
         return "Path too long"
     try:
         resolved = Path(path).resolve()
         if not resolved.exists():
+            _log_security_violation("path_not_found", path, "Resolved path does not exist on disk")
             return "Evidence path does not exist"
         resolved.relative_to(EVIDENCE_ROOT)
         return None
     except ValueError:
+        _log_security_violation("path_traversal", path, "Path resolves outside evidence root")
         return "Path outside evidence root — access denied"
     except RuntimeError:
+        _log_security_violation("symlink_loop", path, "Path resolution caused a symlink loop")
         return "Path resolution error (possible symlink loop)"
     except Exception:
+        _log_security_violation("validation_error", path, "Unexpected path validation failure")
         return "Path validation failed"
 
 
 def _validate_output_dir(path: str) -> Optional[str]:
     """Validate that an output directory is under RESULTS_ROOT (writable area)."""
     if not path or not path.strip():
+        _log_security_violation("output_dir_empty", path or "", "Output directory path was empty")
         return "Output path cannot be empty"
     try:
         resolved = Path(path).resolve()
         if not str(resolved).startswith(str(RESULTS_ROOT.resolve())):
+            _log_security_violation("output_dir_traversal", path, f"Resolves outside results root: {RESULTS_ROOT}")
             return f"Output directory must be under results root ({RESULTS_ROOT}): {path}"
         return None
     except Exception as e:
+        _log_security_violation("output_dir_error", path, str(e))
         return f"Output path validation error: {e}"
 
 
@@ -349,6 +382,7 @@ def _safe_path_join(base: Path, subdir: str) -> Optional[Path]:
         return base
     # Reject path traversal characters
     if ".." in subdir or "~" in subdir or subdir.startswith("/"):
+        _log_security_violation("path_traversal_join", subdir, f"Attempted traversal with '..', '~', or absolute path against {base}")
         return None
     try:
         joined = (base / subdir).resolve()
@@ -356,6 +390,7 @@ def _safe_path_join(base: Path, subdir: str) -> Optional[Path]:
         joined.relative_to(base.resolve())
         return joined
     except (ValueError, Exception):
+        _log_security_violation("path_join_error", subdir, f"Failed to safely join with base {base}")
         return None
 
 
@@ -747,6 +782,21 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        # ── Security Event Logs ───────────────────────────────────
+        Tool(
+            name="get_security_logs",
+            description="Retrieve all security violation logs from the current session. Includes path traversal attempts, forbidden characters, and validation failures.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max log entries to return",
+                        "default": 100,
+                    },
+                },
+            },
+        ),
     ]
 
 
@@ -818,6 +868,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 "extract_features": _handle_extract_features,
                 "benchmark_accuracy": _handle_benchmark,
                 "get_audit_logs": _handle_audit_logs,
+                "get_security_logs": _handle_security_logs,
             }
 
             handler = handler_map.get(name)
@@ -1420,14 +1471,16 @@ async def _handle_hash(args: dict[str, Any]) -> list[TextContent]:
     if err:
         return [TextContent(type="text", text=json.dumps({"success": False, "error": err}))]
 
-    hash_cmd_map = {
-        "md5": "/usr/bin/md5sum",
-        "sha1": "/usr/bin/sha1sum",
-        "sha256": "/usr/bin/sha256sum",
-        "sha512": "/usr/bin/sha512sum",
+    from src.tools.tool_resolver import find_tool
+
+    hash_tool_map = {
+        "md5": find_tool("md5sum") or "/usr/bin/md5sum",
+        "sha1": find_tool("sha1sum") or "/usr/bin/sha1sum",
+        "sha256": find_tool("sha256sum") or "/usr/bin/sha256sum",
+        "sha512": find_tool("sha512sum") or "/usr/bin/sha512sum",
     }
 
-    hash_bin = hash_cmd_map.get(algorithm)
+    hash_bin = hash_tool_map.get(algorithm)
     if not hash_bin:
         return [
             TextContent(
@@ -1436,19 +1489,6 @@ async def _handle_hash(args: dict[str, Any]) -> list[TextContent]:
                     {
                         "success": False,
                         "error": f"Unsupported algorithm: {algorithm}. Use: md5, sha1, sha256, sha512",
-                    }
-                ),
-            )
-        ]
-
-    if not Path(hash_bin).exists():
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps(
-                    {
-                        "success": False,
-                        "error": f"{hash_bin} not found. Install coreutils: sudo apt-get install coreutils",
                     }
                 ),
             )
@@ -2394,6 +2434,25 @@ async def _handle_audit_logs(args: dict[str, Any]) -> list[TextContent]:
                     "session_log_path": str(_audit_log_path) if has_entries else "",
                     "total_entries": total,
                     "entries": logs,
+                },
+                indent=2,
+            ),
+        )
+    ]
+
+
+async def _handle_security_logs(args: dict[str, Any]) -> list[TextContent]:
+    """Return security violation logs from current session."""
+    limit = min(args.get("limit", 100), 10000)
+    logs = (await _get_security_logs())[-limit:]
+    return [
+        TextContent(
+            type="text",
+            text=json.dumps(
+                {
+                    "success": True,
+                    "total_events": len(_security_events),
+                    "events": logs,
                 },
                 indent=2,
             ),
