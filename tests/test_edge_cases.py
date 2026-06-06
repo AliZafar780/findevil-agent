@@ -13,11 +13,11 @@ Tests every tool against:
   - Audit trail integrity
 """
 
-import os
 import sys
 from pathlib import Path
 
 import pytest
+from helpers import EVIDENCE_ROOT, HAS_EVIDENCE, _call
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -26,11 +26,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # every test. Without this, each test gets its own loop and the fixture's
 # futures raise "attached to a different loop".
 pytestmark = pytest.mark.asyncio(loop_scope="module")
-
-# ── Imports from conftest.py ──────────────────────────────────────
-# conftest.py provides: mcp_client (fixture), test_img (fixture)
-# We import shared helpers directly for clarity.
-from helpers import _call, HAS_EVIDENCE
 
 # ──────────────────────────────────────────────────────────────────
 
@@ -306,27 +301,21 @@ class TestLargeFileHandling:
     """Tools must handle large files without crashing."""
 
     async def test_large_file_hash(self, mcp_client):
-        large_path = "/evidence/cases/large_test.bin"
-        try:
-            # 1MB — still exercises the same hash code paths as 50MB
-            # but avoids the ~5s write + hash overhead that caused CI timeouts.
-            with open(large_path, "wb") as f:
-                f.write(b"X" * 1024 * 1024)  # 1MB
+        # Use existing evidence file (test.raw is ~10MB ext2 image)
+        # which is already within the allowed evidence root.
+        large_path = str(EVIDENCE_ROOT)
 
-            for alg in ["md5", "sha1", "sha256"]:
-                r = await _call(
-                    mcp_client,
-                    "verify_hash",
-                    {
-                        "file_path": large_path,
-                        "algorithm": alg,
-                    },
-                )
-                assert r.get("success"), f"Hash of file with {alg} should succeed"
-                assert r.get("hash"), "Should return a hash value"
-        finally:
-            if os.path.exists(large_path):
-                os.unlink(large_path)
+        for alg in ["md5", "sha1", "sha256"]:
+            r = await _call(
+                mcp_client,
+                "verify_hash",
+                {
+                    "file_path": large_path,
+                    "algorithm": alg,
+                },
+            )
+            assert r.get("success"), f"Hash of file with {alg} should succeed"
+            assert r.get("hash"), "Should return a hash value"
 
 
 class TestAuditTrail:

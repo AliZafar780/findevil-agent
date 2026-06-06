@@ -3,7 +3,9 @@ Property-based tests using Hypothesis.
 Tests invariant properties of forensic tool functions.
 """
 
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from src.tools.tool_resolver import find_tool
 
 # ── Tool Resolution Properties ──────────────────────────────────
