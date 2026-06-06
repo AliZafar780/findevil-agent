@@ -391,18 +391,35 @@ def _validate_evidence_path(path: str) -> Optional[str]:
 
 
 def _validate_output_dir(path: str) -> Optional[str]:
-    """Validate that an output directory is under RESULTS_ROOT (writable area)."""
+    """Validate that an output directory is under RESULTS_ROOT (writable area).
+
+    Uses the same structural check as _validate_evidence_path (relative_to)
+    rather than a string prefix match, so /results_backdoor cannot bypass
+    the /results restriction.
+    """
     if not path or not path.strip():
         _log_security_violation("output_dir_empty", path or "", "Output directory path was empty")
         return "Output path cannot be empty"
+    # Reject null bytes and control characters (same as evidence path)
+    if "\x00" in path or any(ord(c) < 32 for c in path):
+        _log_security_violation(
+            "invalid_chars", path, "Output path contains null byte or control characters"
+        )
+        return "Output path contains invalid characters"
     try:
         resolved = Path(path).resolve()
-        if not str(resolved).startswith(str(RESULTS_ROOT.resolve())):
-            _log_security_violation(
-                "output_dir_traversal", path, f"Resolves outside results root: {RESULTS_ROOT}"
-            )
-            return f"Output directory must be under results root ({RESULTS_ROOT}): {path}"
+        resolved.relative_to(RESULTS_ROOT.resolve())
         return None
+    except ValueError:
+        _log_security_violation(
+            "output_dir_traversal", path, f"Resolves outside results root: {RESULTS_ROOT}"
+        )
+        return f"Output directory must be under results root ({RESULTS_ROOT}): {path}"
+    except RuntimeError:
+        _log_security_violation(
+            "symlink_loop", path, "Output path resolution caused a symlink loop"
+        )
+        return "Output path resolution error (possible symlink loop)"
     except Exception as e:
         _log_security_violation("output_dir_error", path, str(e))
         return f"Output path validation error: {e}"

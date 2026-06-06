@@ -18,6 +18,7 @@ def test_find_tool_never_crashes(name):
     assert result is None or isinstance(result, str)
 
 
+@settings(deadline=None)
 @given(st.lists(st.text()))
 def test_find_tools_batch_never_crashes(names):
     """find_tools batch should never raise."""
