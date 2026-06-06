@@ -54,6 +54,10 @@ SERVER_VERSION = "2.0.0"
 MAX_OUTPUT_CHARS = 100_000  # Truncate tool output to prevent memory issues
 MAX_TIMEOUT = 600  # Maximum tool timeout in seconds
 
+# ── Security Events Persistence ────────────────────────────────────
+SECURITY_EVENTS_FILE = Path.home() / ".local" / "share" / "findevil" / "security_events.jsonl"
+SECURITY_EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+
 # ── Tool Configuration (loaded from tools.toml) ─────────────────────
 
 _TOOL_CONFIG: dict[str, Any] = {}
@@ -173,6 +177,18 @@ async def _get_audit_logs() -> list[dict[str, Any]]:
 # ── Security Event Logging ─────────────────────────────────────────
 _security_events: list[dict[str, Any]] = []
 
+# Load persisted security events on startup
+if SECURITY_EVENTS_FILE.exists():
+    try:
+        with open(str(SECURITY_EVENTS_FILE)) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    _security_events.append(json.loads(line))
+        logger.info(f"Loaded {len(_security_events)} persisted security events")
+    except Exception as e:
+        logger.warning(f"Failed to load security events: {e}")
+
 
 def _log_security_violation(event_type: str, path: str, detail: str = "") -> None:
     """Log a security violation for audit trail."""
@@ -184,6 +200,16 @@ def _log_security_violation(event_type: str, path: str, detail: str = "") -> Non
         "detail": _trunc(detail, 500),
     }
     _security_events.append(entry)
+    # Persist to disk
+    try:
+        SECURITY_EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(SECURITY_EVENTS_FILE), "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        logger.error(f"Failed to persist security event: {e}")
+    # Cap in-memory buffer at 100,000 entries
+    if len(_security_events) > 100_000:
+        _security_events[:] = _security_events[-50_000:]
     logger.warning(f"Security violation: {event_type} — {path}")
 
 

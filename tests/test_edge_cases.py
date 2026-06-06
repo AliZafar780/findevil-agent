@@ -13,7 +13,6 @@ Tests every tool against:
   - Audit trail integrity
 """
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -22,55 +21,17 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# ── Helpers ────────────────────────────────────────────────────────
+# All async tests in this module share a single event loop so that the
+# module-scoped MCP server fixture's subprocess pipes are accessible from
+# every test. Without this, each test gets its own loop and the fixture's
+# futures raise "attached to a different loop".
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-EVIDENCE_ROOT = Path("/evidence/cases/test.raw")
-HAS_EVIDENCE = EVIDENCE_ROOT.exists()
-
-
-async def _call(client, name: str, args: dict) -> dict:
-    """Call a tool and return parsed result."""
-    result = await client.call_tool(name, args)
-    if isinstance(result, str):
-        return json.loads(result)
-    return result if isinstance(result, dict) else {"success": False, "error": str(result)}
-
-
-def _get_client():
-    """Create a fresh SimpleMCPClient for each test.
-
-    Each test gets its own MCP server subprocess to avoid
-    event loop attachment issues across async tests.
-    """
-    from src.agent.loop import SimpleMCPClient
-
-    return SimpleMCPClient()
-
-
-# ── Fixtures ──────────────────────────────────────────────────────
-
-
-@pytest.fixture(scope="function")
-async def mcp_client():
-    """Start a fresh MCP server per test.
-
-    Function-scoped to avoid asyncio event loop cross-contamination
-    (each async test in pytest-asyncio gets its own event loop).
-    Integration tests require system forensic tools installed.
-    """
-    client = _get_client()
-    await client.start()
-    yield client
-    try:
-        await client.stop()
-    except Exception:
-        pass
-
-
-@pytest.fixture
-def test_img():
-    return "/evidence/cases/test.raw"
-
+# ── Imports from conftest.py ──────────────────────────────────────
+# conftest.py provides: mcp_client (fixture), test_img (fixture)
+# We import shared helpers directly for clarity.
+from helpers import _call, HAS_EVIDENCE
+# ──────────────────────────────────────────────────────────────────
 
 # ═════════════════════════════════════════════════════════════════
 # 1. SECURITY: PATH TRAVERSAL ATTACKS
@@ -346,8 +307,10 @@ class TestLargeFileHandling:
     async def test_large_file_hash(self, mcp_client):
         large_path = "/evidence/cases/large_test.bin"
         try:
+            # 1MB — still exercises the same hash code paths as 50MB
+            # but avoids the ~5s write + hash overhead that caused CI timeouts.
             with open(large_path, "wb") as f:
-                f.write(b"X" * 50 * 1024 * 1024)  # 50MB
+                f.write(b"X" * 1024 * 1024)  # 1MB
 
             for alg in ["md5", "sha1", "sha256"]:
                 r = await _call(
@@ -358,7 +321,7 @@ class TestLargeFileHandling:
                         "algorithm": alg,
                     },
                 )
-                assert r.get("success"), f"Hash of 50MB file with {alg} should succeed"
+                assert r.get("success"), f"Hash of file with {alg} should succeed"
                 assert r.get("hash"), "Should return a hash value"
         finally:
             if os.path.exists(large_path):

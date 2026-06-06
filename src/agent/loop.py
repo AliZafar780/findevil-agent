@@ -8,11 +8,69 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from .groq_client import GroqDFIRClient
 from .output_parser import parse_report
 from .tool_selector import suggest_next_tools
+
+# ── Evidence Type Detection ──────────────────────────────────────────
+# Maps file extensions to evidence categories for tool compatibility filtering.
+
+EVIDENCE_TYPE_MAP: dict[str, list[str]] = {
+    # Disk comes first because .raw is overwhelmingly used for disk images in DFIR
+    "disk": [".img", ".iso", ".vhd", ".vmdk", ".qcow2", ".ext2", ".ext3", ".ext4", ".raw", ".dd"],
+    "memory": [".mem", ".vmem", ".dmp", ".dump", ".bin", ".elf"],
+    "pcap": [".pcap", ".pcapng", ".cap"],
+    "registry": [".hiv", ".dat", ".reg"],
+    "artifact": [".json", ".csv", ".log", ".txt"],
+}
+
+# Tools grouped by compatible evidence type
+EVIDENCE_TO_TOOLS: dict[str, list[str]] = {
+    "memory": ["mem_list_processes", "mem_analyze", "mem_scan_network", "mem_dump_cmdline"],
+    "disk": [
+        "fs_partition_scan", "fs_list_files", "fs_filesystem_info", "fs_extract_file",
+        "carve_files", "extract_features", "analyze_binary",
+    ],
+    "pcap": ["pcap_analyze", "pcap_list_protocols"],
+    "registry": ["reg_analyze_hive"],
+    "any": [
+        "list_evidence", "verify_hash", "compute_hash", "scan_yara", "search_text_patterns",
+        "get_audit_logs", "get_security_logs", "fs_strings", "timeline_build",
+        "timeline_filter", "extract_features",
+    ],
+}
+
+
+def _detect_evidence_type(evidence_path: str) -> str:
+    """Detect evidence type from file extension.
+
+    Returns one of: 'memory', 'disk', 'pcap', 'registry', 'artifact', or 'unknown'.
+    """
+    if not evidence_path:
+        return "unknown"
+    path = evidence_path.lower()
+    for etype, exts in EVIDENCE_TYPE_MAP.items():
+        for ext in exts:
+            if path.endswith(ext):
+                return etype
+    # Default heuristic: if it has an extension, treat as disk
+    if "." in Path(evidence_path).name:
+        return "disk"
+    return "unknown"
+
+
+def _get_compatible_tools(evidence_type: str) -> list[str]:
+    """Get tool names compatible with the given evidence type.
+
+    Includes both general-purpose tools ('any' category) and type-specific tools.
+    """
+    tools = list(EVIDENCE_TO_TOOLS.get("any", []))
+    tools.extend(EVIDENCE_TO_TOOLS.get(evidence_type, []))
+    return tools
+
 
 logger = logging.getLogger("findevil-agent")
 
@@ -323,6 +381,30 @@ class DFIRWorkflow:
                     if self.state.consecutive_failures == 0:
                         break  # Fallback worked
 
+                # Type-aware escalation: if fallbacks also fail, switch tool categories
+                if (
+                    self.state.consecutive_failures >= 2
+                    and self._evidence_path
+                    and not tool_call.success
+                ):
+                    current_type = _detect_evidence_type(self._evidence_path)
+                    fallback_order = ["any", "disk", "memory", "pcap", "registry"]
+                    for ftype in fallback_order:
+                        if ftype == current_type:
+                            continue
+                        candidates = [
+                            t for t in _get_compatible_tools(ftype)
+                            if t not in fallbacks
+                        ]
+                        if candidates:
+                            logger.info(
+                                f"  ↪ Type escalation: {current_type} -> {ftype}, "
+                                f"trying {candidates[0]}"
+                            )
+                            await self._try_fallback(candidates[0])
+                            if self.state.consecutive_failures == 0:
+                                break
+
             self.state.record_call(tool_call)
 
     async def _get_phase_tools(self) -> list[str]:
@@ -340,7 +422,20 @@ class DFIRWorkflow:
                 )
                 if llm_decision:
                     logger.info(f"  🤖 LLM tool selection: {llm_decision}")
-                    return [t.get("name", t) if isinstance(t, dict) else t for t in llm_decision]
+                    suggested = [t.get("name", t) if isinstance(t, dict) else t for t in llm_decision]
+                    # Filter out tools incompatible with the current evidence type
+                    if self._evidence_path:
+                        evidence_type = _detect_evidence_type(self._evidence_path)
+                        compatible = _get_compatible_tools(evidence_type)
+                        filtered = [t for t in suggested if t in compatible]
+                        if len(filtered) < len(suggested):
+                            removed = set(suggested) - set(filtered)
+                            logger.info(
+                                f"Filtered {len(removed)} incompatible tools for "
+                                f"{evidence_type} evidence: {removed}"
+                            )
+                        suggested = filtered or suggested  # Fall back to originals if empty
+                    return suggested
             except Exception as e:
                 logger.warning(f"LLM tool selection failed, using tool_selector fallback: {e}")
 
