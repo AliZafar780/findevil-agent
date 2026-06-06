@@ -23,12 +23,12 @@
     AI-Powered Digital Forensics &amp; Incident Response
   </p>
   <p>
-    <a href="https://github.com/AliZafar780/findevil-agent"><img src="https://img.shields.io/badge/version-2.1.4-blue?style=flat-square&logo=github" alt="Version"></a>
+    <a href="https://github.com/AliZafar780/findevil-agent"><img src="https://img.shields.io/badge/version-2.1.5-blue?style=flat-square&logo=github" alt="Version"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
     <a href="https://github.com/AliZafar780/findevil-agent/actions"><img src="https://img.shields.io/badge/build-CI%20%7C%20Docker%20%7C%20Lint%20%7C%20Type%20Check-blue?style=flat-square" alt="CI"></a>
     <img src="https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue?style=flat-square&logo=python" alt="Python">
-    <img src="https://img.shields.io/badge/tests-107%20passing-brightgreen?style=flat-square" alt="Tests">
-    <img src="https://img.shields.io/badge/tools-22%20MCP-informational?style=flat-square" alt="Tools">
+    <img src="https://img.shields.io/badge/tests-122%20passing-brightgreen?style=flat-square" alt="Tests">
+    <img src="https://img.shields.io/badge/tools-23%20MCP-informational?style=flat-square" alt="Tools">
     <img src="https://img.shields.io/badge/AI-Groq%20%7C%20Deterministic%20Mode-orange?style=flat-square" alt="AI">
   </p>
   <p>
@@ -40,7 +40,7 @@
 
 ## 🔥 Overview
 
-**FindEvil** is an autonomous digital forensics and incident response agent that orchestrates **22 MCP forensic tools** across memory, filesystem, registry, network, and carving analysis. It supports **Groq AI** for intelligent tool selection and report generation, and runs fully in **deterministic mode without any API key**.
+**FindEvil** is an autonomous digital forensics and incident response agent that orchestrates **23 MCP forensic tools** across memory, filesystem, registry, network, and carving analysis. It supports **Groq AI** for intelligent tool selection and report generation, and runs fully in **deterministic mode without any API key**.
 
 > _"Find Evil, find answers, find closure."_
 
@@ -48,14 +48,14 @@
 
 | Capability | Status |
 |---|---|
-| 🔌 **22 MCP Forensic Tools** | Disk, memory, registry, network, carving, hashing, YARA |
+| 🔌 **23 MCP Forensic Tools** | Disk, memory, registry, network, carving, hashing, YARA |
 | 🤖 **AI Integration** | Groq Llama 3.3 70B (optional — deterministic mode always works) |
 | ✅ **Zero API Key Required** | All features operational without Groq, Shodan, or any external key |
 | 🛡️ **Security Hardened** | Path traversal blocked, null bytes rejected, async lock concurrency |
 | ⚡ **Performance Tuned** | Lazy imports, cached tool resolution, buffered audit writes |
 | 📊 **Confidence Scoring** | Per-tool data quality: CONFIRMED / INFERRED / UNVERIFIED |
 | 💰 **Token Budget Caps** | Max 100K tokens/session (~$0.07) with real-time tracking |
-| 🧪 **107 Passing Tests** | Unit (41) + Integration (66) across CLI, tools, parser, server, edge cases |
+| 🧪 **122 Passing Tests** | Unit + Integration + Property-Based (Hypothesis) across CLI, tools, parser, server, edge cases |
 | 🐳 **Docker** | Multi-stage build: python:3.11-slim → ubuntu:24.04 with sleuthkit, yara, tshark, foremost, bulk-extractor |
 | 🔄 **CI/CD** | GitHub Actions: lint, type-check, test (4 Python versions), build, Docker, security audit |
 | 📈 **Gap Analysis** | Comprehensive 33-gap audit closed — [GAP_ANALYSIS.md](GAP_ANALYSIS.md) |
@@ -147,7 +147,7 @@ findevil tool fs_list_files --image test.dd
 
 ### MCP Server
 
-FindEvil implements the **Model Context Protocol** (MCP), making all 22 tools available to any MCP-compatible LLM client (Claude Code, custom agents, etc.).
+FindEvil implements the **Model Context Protocol** (MCP), making all 23 tools available to any MCP-compatible LLM client (Claude Code, custom agents, etc.).
 
 ```json
 {
@@ -252,7 +252,7 @@ pytest tests/test_groq_client.py -v       # Parser, selector, client tests (22)
 pytest tests/test_server.py -v            # MCP server integration tests (11)
 ```
 
-**107 tests passing** across 6 test suites:
+**122 tests passing** across 7 test suites:
 
 | Suite | Type | Count | Coverage |
 |---|---|---|---|
@@ -261,6 +261,7 @@ pytest tests/test_server.py -v            # MCP server integration tests (11)
 | Groq Client | Unit | 22 | Client init, output parser (JSON extraction, tool decisions, reports), tool selector (suggestions, fallback chains) |
 | Workflow | Integration | 2 | Agent loop phases, tool chaining |
 | Edge Cases | Integration | 53 | Path traversal, missing evidence, carving security, YARA, large files, audit trail, concurrent access, error quality, wrong-tool rejection |
+| Property-Based | Hypothesis | 15 | Tool resolver (never crashes), sanitize/truncate invariants, all Pydantic model property checks |
 | Server | Integration | 11 | Tool execution, hash verification, evidence listing, path validation, null byte, missing params |
 
 ### CI Pipeline
@@ -332,7 +333,7 @@ Multi-stage Dockerfile: `python:3.11-slim` builder → `ubuntu:24.04` runtime wi
 findevil-agent/
 ├── src/
 │   ├── cli.py                   # Rich CLI entry point
-│   ├── server.py                # MCP server (22 tools, async subprocess, audit, benchmarks)
+│   ├── server.py                # MCP server (23 tools, async subprocess, audit, security logs, benchmarks)
 │   ├── models.py                # Pydantic data models
 │   ├── __main__.py              # Package entry point
 │   ├── agent/
