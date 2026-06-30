@@ -38,6 +38,7 @@ from src.tools.memory import analyze as mem_analyze
 from src.tools.memory import dump_cmdline, list_processes, scan_network
 from src.tools.timeline import build as timeline_build
 from src.tools.timeline import filter_timeline
+from src._version import __version__ as SERVER_VERSION
 
 # ── Configuration ──────────────────────────────────────────────────
 logging.basicConfig(
@@ -50,7 +51,6 @@ logger = logging.getLogger("findevil-mcp")
 EVIDENCE_ROOT = Path(os.environ.get("EVIDENCE_ROOT", "/evidence"))
 RESULTS_ROOT = Path(os.environ.get("RESULTS_ROOT", "/results"))
 SERVER_NAME = "findevil-mcp"
-SERVER_VERSION = "2.0.0"
 MAX_OUTPUT_CHARS = 100_000  # Truncate tool output to prevent memory issues
 MAX_TIMEOUT = 600  # Maximum tool timeout in seconds
 
@@ -232,6 +232,17 @@ atexit.register(_cleanup)
 # ── Tool Execution ────────────────────────────────────────────────
 
 
+def _sanitize_cmd(cmd: list[str]) -> str:
+    """Sanitize command for logging — redact sensitive arguments like keys, tokens, passwords."""
+    sanitized = []
+    for c in cmd:
+        if any(kw in c.lower() for kw in ['key', 'token', 'password', 'secret', 'credential']):
+            sanitized.append('***')
+        else:
+            sanitized.append(c)
+    return " ".join(str(c) for c in sanitized)
+
+
 async def _run_tool(
     cmd: list[str], timeout: int = 120, stdin_data: Optional[str] = None
 ) -> dict[str, Any]:
@@ -240,6 +251,12 @@ async def _run_tool(
     Handles timeout, missing tools, and non-zero exits gracefully.
     Uses run_in_executor to avoid blocking the asyncio event loop.
     """
+    # Forbidden commands that could damage the system
+    FORBIDDEN_COMMANDS = {"dd", "mkfs", "mkfs.ext4", "fdisk", "rm", "shutdown", "poweroff", "reboot", "halt"}
+    cmd_name = Path(cmd[0]).name if cmd else ""
+    if cmd_name in FORBIDDEN_COMMANDS:
+        return {"success": False, "error": f"Forbidden command: {cmd_name}"}
+
     loop = asyncio.get_event_loop()
     start = time.time()
     try:
@@ -266,7 +283,7 @@ async def _run_tool(
             "stderr": stderr,
             "returncode": result.returncode,
             "duration_ms": duration,
-            "command": _trunc(" ".join(str(c) for c in cmd), 500),
+            "command": _sanitize_cmd(cmd),
         }
     except subprocess.TimeoutExpired:
         return {
@@ -275,7 +292,7 @@ async def _run_tool(
             "stderr": f"Command timed out after {timeout}s",
             "returncode": -1,
             "duration_ms": timeout * 1000,
-            "command": _trunc(" ".join(str(c) for c in cmd), 500),
+            "command": _sanitize_cmd(cmd),
         }
     except FileNotFoundError as e:
         return {
@@ -284,7 +301,7 @@ async def _run_tool(
             "stderr": f"Tool not found: {e}. Is SIFT Workstation installed?",
             "returncode": -1,
             "duration_ms": 0,
-            "command": _trunc(" ".join(str(c) for c in cmd), 500),
+            "command": _sanitize_cmd(cmd),
         }
     except PermissionError as e:
         return {
@@ -293,7 +310,7 @@ async def _run_tool(
             "stderr": f"Permission denied: {e}",
             "returncode": -1,
             "duration_ms": 0,
-            "command": _trunc(" ".join(str(c) for c in cmd), 500),
+            "command": _sanitize_cmd(cmd),
         }
     except Exception as e:
         return {
@@ -302,7 +319,7 @@ async def _run_tool(
             "stderr": f"Unexpected error: {e}",
             "returncode": -1,
             "duration_ms": int((time.time() - start) * 1000),
-            "command": _trunc(" ".join(str(c) for c in cmd), 500),
+            "command": _sanitize_cmd(cmd),
         }
 
 
@@ -374,9 +391,14 @@ def _validate_evidence_path(path: str) -> Optional[str]:
         return "Path too long"
     try:
         resolved = Path(path).resolve()
-        if not resolved.exists():
-            _log_security_violation("path_not_found", path, "Resolved path does not exist on disk")
-            return "Evidence path does not exist"
+        # TOCTOU mitigation: verify the final path component is not a symlink
+        # and open with O_NOFOLLOW to prevent symlink-swap attacks
+        try:
+            fd = os.open(str(resolved), os.O_RDONLY | os.O_NOFOLLOW)
+            os.close(fd)
+        except OSError:
+            _log_security_violation("symlink_or_missing", path, "Path is a symlink, missing, or cannot be opened with O_NOFOLLOW")
+            return "Evidence path is invalid (symlink, missing, or inaccessible)"
         resolved.relative_to(EVIDENCE_ROOT)
         return None
     except ValueError:
@@ -1456,6 +1478,20 @@ async def _handle_yara(args: dict[str, Any]) -> list[TextContent]:
                         "suggestion": 'Format: rule name { strings: $a = "pattern" condition: $a }',
                     }
                 ),
+            )
+        ]
+
+    # Block include/import directives that could read arbitrary files
+    import re
+
+    if re.search(r'\b(include|import)\s+["\']', rules):
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": False,
+                    "error": "YARA include/import directives are not allowed for security reasons",
+                }),
             )
         ]
 

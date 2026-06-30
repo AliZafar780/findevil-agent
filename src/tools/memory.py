@@ -23,7 +23,6 @@ VOL_CANDIDATES = [
     "/usr/bin/vol.py",
     str(Path.home() / ".local" / "bin" / "vol.py"),
     str(Path.home() / "vol.py"),
-    "/home/aliz/findevil-memorygraph/venv/bin/vol.py",
 ]
 
 
@@ -146,6 +145,8 @@ def _scan_strings(memory_path: str, max_size_mb: int = 100) -> list[dict[str, An
     for category, patterns in MEMORY_IOC_PATTERNS.items():
         matches = []
         for pattern in patterns:
+            if not pattern:
+                continue
             start = 0
             while True:
                 pos = data.find(pattern, start)

@@ -91,13 +91,15 @@ def filter_timeline(
                 data=events[:1000],
             )
         else:
+            output_path = Path(storage_path).with_suffix(".csv")
+            output_path = output_path.parent / f"{output_path.stem}_filtered.csv"
             cmd = [
                 "psort",
                 "-q",
                 "-o",
                 "dynamic",
                 "--output_file",
-                storage_path.replace(".plaso", "_filtered.csv"),
+                str(output_path),
                 storage_path,
             ]
             if query:

@@ -17,7 +17,7 @@ FROM ubuntu:24.04
 
 LABEL maintainer="Ali Zafar"
 LABEL description="FindEvil Agent — Autonomous DFIR Analysis"
-LABEL version="2.1.1"
+LABEL version="2.2.3"
 
 # Avoid interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive

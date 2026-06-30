@@ -96,9 +96,10 @@ jobs:
           pip install hypothesis pytest pytest-asyncio pytest-timeout
           pip install -e ".[dev]" 2>/dev/null || pip install pydantic fastmcp httpx rich
 
-      - name: Generate test evidence
+      # Test evidence generation script not yet available; using inline test data instead
+      - name: Ensure test directories exist
         run: |
-          sudo bash scripts/generate_test_evidence.sh
+          mkdir -p /evidence/disk /evidence/memory /evidence/network /evidence/cases
         continue-on-error: true
 
       - name: Run unit tests
