@@ -236,8 +236,8 @@ def _sanitize_cmd(cmd: list[str]) -> str:
     """Sanitize command for logging — redact sensitive arguments like keys, tokens, passwords."""
     sanitized = []
     for c in cmd:
-        if any(kw in c.lower() for kw in ['key', 'token', 'password', 'secret', 'credential']):
-            sanitized.append('***')
+        if any(kw in c.lower() for kw in ["key", "token", "password", "secret", "credential"]):
+            sanitized.append("***")
         else:
             sanitized.append(c)
     return " ".join(str(c) for c in sanitized)
@@ -252,7 +252,17 @@ async def _run_tool(
     Uses run_in_executor to avoid blocking the asyncio event loop.
     """
     # Forbidden commands that could damage the system
-    FORBIDDEN_COMMANDS = {"dd", "mkfs", "mkfs.ext4", "fdisk", "rm", "shutdown", "poweroff", "reboot", "halt"}
+    FORBIDDEN_COMMANDS = {
+        "dd",
+        "mkfs",
+        "mkfs.ext4",
+        "fdisk",
+        "rm",
+        "shutdown",
+        "poweroff",
+        "reboot",
+        "halt",
+    }
     cmd_name = Path(cmd[0]).name if cmd else ""
     if cmd_name in FORBIDDEN_COMMANDS:
         return {"success": False, "error": f"Forbidden command: {cmd_name}"}
@@ -397,7 +407,11 @@ def _validate_evidence_path(path: str) -> Optional[str]:
             fd = os.open(str(resolved), os.O_RDONLY | os.O_NOFOLLOW)
             os.close(fd)
         except OSError:
-            _log_security_violation("symlink_or_missing", path, "Path is a symlink, missing, or cannot be opened with O_NOFOLLOW")
+            _log_security_violation(
+                "symlink_or_missing",
+                path,
+                "Path is a symlink, missing, or cannot be opened with O_NOFOLLOW",
+            )
             return "Evidence path is invalid (symlink, missing, or inaccessible)"
         resolved.relative_to(EVIDENCE_ROOT)
         return None
@@ -1488,10 +1502,12 @@ async def _handle_yara(args: dict[str, Any]) -> list[TextContent]:
         return [
             TextContent(
                 type="text",
-                text=json.dumps({
-                    "success": False,
-                    "error": "YARA include/import directives are not allowed for security reasons",
-                }),
+                text=json.dumps(
+                    {
+                        "success": False,
+                        "error": "YARA include/import directives are not allowed for security reasons",
+                    }
+                ),
             )
         ]
 

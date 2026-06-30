@@ -205,7 +205,7 @@ jobs:
 
       - name: Generate SBOM (CycloneDX)
         run: |
-          python -m cyclonedx_py environment --output sbom.json
+          cyclonedx-py environment -o sbom.json || echo "SBOM generation skipped (non-fatal)"
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@v4
