@@ -75,6 +75,13 @@ TOOL_LOCATIONS = {
         "darwin": ["/usr/bin/strings"],
         "win32": [],
     },
+    "python3": {
+        "linux": ["/usr/bin/python3", "/usr/local/bin/python3"],
+        "darwin": ["/usr/bin/python3", "/opt/homebrew/bin/python3"],
+        "win32": [r"C:\Python314\python.exe", r"C:\Python313\python.exe",
+                  r"C:\Python312\python.exe", r"C:\Python311\python.exe",
+                  r"C:\Python310\python.exe"],
+    },
     "debugfs": {
         "linux": ["/usr/bin/debugfs", "/usr/local/bin/debugfs"],
         "darwin": ["/usr/local/bin/debugfs"],
@@ -143,6 +150,11 @@ def find_tool(name: str) -> Optional[str]:
     if path:
         return path
 
+    # 1b. Interpreters: resolve "python3"/"python" to the running interpreter
+    #     (covers Windows where the binary is python.exe, and any venv).
+    if name in ("python3", "python") and sys.executable:
+        return sys.executable
+
     # 2. Platform-specific known locations
     platform = sys.platform  # 'linux', 'darwin', 'win32'
     locations = TOOL_LOCATIONS.get(name, {})
@@ -193,6 +205,7 @@ def _apt_package(name: str) -> str:
         "tshark": "tshark",
         "strings": "binutils",
         "debugfs": "e2fsprogs",
+        "python3": "python3",
     }
     return mapping.get(name, name)
 
@@ -209,5 +222,6 @@ def _brew_package(name: str) -> str:
         "yara": "yara",
         "tshark": "wireshark",
         "strings": "binutils",
+        "python3": "python3",
     }
     return mapping.get(name, name)
